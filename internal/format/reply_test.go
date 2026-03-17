@@ -25,6 +25,7 @@ func TestReply_Approved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertContains(t, text, "✅")
 	assertContains(t, text, "approved")
 	assertContains(t, text, "<@U002BOB>")
 }
@@ -40,6 +41,7 @@ func TestReply_Unapproved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertContains(t, text, "↩️")
 	assertContains(t, text, "removed")
 }
 
@@ -54,6 +56,7 @@ func TestReply_Fulfilled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertContains(t, text, "🎉")
 	assertContains(t, text, "merged")
 }
 
@@ -69,6 +72,7 @@ func TestReply_Rejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertContains(t, text, "🚫")
 	assertContains(t, text, "declined")
 	assertContains(t, text, "needs more work")
 }
@@ -89,6 +93,7 @@ func TestReply_CommentCreated_Inline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertContains(t, text, "💬")
 	assertContains(t, text, "main.go")
 	assertContains(t, text, "42")
 	assertContains(t, text, "fix this")
@@ -110,6 +115,7 @@ func TestReply_CommentCreated_TopLevel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertContains(t, text, "💬")
 	assertContains(t, text, "looks good")
 	assertNotContains(t, text, "main.go")
 }
@@ -130,6 +136,7 @@ func TestReply_CommitStatusInProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertContains(t, text, "🔄")
 	assertContains(t, text, "CI Pipeline")
 	assertContains(t, text, "is running")
 }
@@ -150,6 +157,7 @@ func TestReply_CommitStatusSuccessful(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertContains(t, text, "✅")
 	assertContains(t, text, "passed")
 }
 
@@ -169,6 +177,7 @@ func TestReply_CommitStatusFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertContains(t, text, "❌")
 	assertContains(t, text, "failed")
 }
 

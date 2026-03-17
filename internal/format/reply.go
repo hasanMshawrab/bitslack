@@ -6,6 +6,11 @@ import (
 	"github.com/hasanMshawrab/bitslack/internal/event"
 )
 
+const (
+	stateSuccessful = "SUCCESSFUL"
+	stateFailed     = "FAILED"
+)
+
 // Reply produces a plain-text reply string for the given event.
 // Note: KeyPRCreated and KeyPRUpdated are intentionally absent --
 // created is handled by the opening message, updated by chat.update.
@@ -31,19 +36,19 @@ func Reply(ev *event.Event, resolve UserResolver) (string, error) {
 }
 
 func formatApproved(ev *event.PullRequestEvent, resolve UserResolver) string {
-	return fmt.Sprintf("%s approved this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
+	return fmt.Sprintf("✅ %s approved this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
 }
 
 func formatUnapproved(ev *event.PullRequestEvent, resolve UserResolver) string {
-	return fmt.Sprintf("%s removed their approval", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
+	return fmt.Sprintf("↩️ %s removed their approval", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
 }
 
 func formatFulfilled(ev *event.PullRequestEvent, resolve UserResolver) string {
-	return fmt.Sprintf("%s merged this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
+	return fmt.Sprintf("🎉 %s merged this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
 }
 
 func formatRejected(ev *event.PullRequestEvent, resolve UserResolver) string {
-	msg := fmt.Sprintf("%s declined this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
+	msg := fmt.Sprintf("🚫 %s declined this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
 	if ev.PullRequest.Reason != "" {
 		msg += fmt.Sprintf("\n> %s", ev.PullRequest.Reason)
 	}
@@ -54,15 +59,15 @@ func formatCommentCreated(ev *event.PullRequestEvent, resolve UserResolver) stri
 	actor := mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve)
 	comment := ev.Comment
 	if comment == nil {
-		return fmt.Sprintf("%s commented", actor)
+		return fmt.Sprintf("💬 %s commented", actor)
 	}
 
 	var msg string
 	if comment.Inline != nil {
-		msg = fmt.Sprintf("%s commented on `%s:%d`\n> %s\n%s",
+		msg = fmt.Sprintf("💬 %s commented on `%s:%d`\n> %s\n%s",
 			actor, comment.Inline.Path, comment.Inline.To, comment.Content.Raw, comment.HTMLURL)
 	} else {
-		msg = fmt.Sprintf("%s commented\n> %s\n%s",
+		msg = fmt.Sprintf("💬 %s commented\n> %s\n%s",
 			actor, comment.Content.Raw, comment.HTMLURL)
 	}
 	return msg
@@ -70,8 +75,22 @@ func formatCommentCreated(ev *event.PullRequestEvent, resolve UserResolver) stri
 
 func formatCommitStatus(ev *event.CommitStatusEvent) string {
 	cs := ev.CommitStatus
+	emoji := commitStatusEmoji(cs.State)
 	stateText := stateToText(cs.State)
-	return fmt.Sprintf("%s %s (%s)\n%s", cs.Name, stateText, cs.Key, cs.URL)
+	return fmt.Sprintf("%s %s %s (%s)\n%s", emoji, cs.Name, stateText, cs.Key, cs.URL)
+}
+
+func commitStatusEmoji(state string) string {
+	switch state {
+	case "INPROGRESS":
+		return "🔄"
+	case stateSuccessful:
+		return "✅"
+	case stateFailed:
+		return "❌"
+	default:
+		return "❓"
+	}
 }
 
 func formatPipelineRun(ev *event.PipelineRunEvent) string {
@@ -83,9 +102,9 @@ func formatPipelineRun(ev *event.PipelineRunEvent) string {
 
 func pipelineResultEmoji(result string) string {
 	switch result {
-	case "SUCCESSFUL":
+	case stateSuccessful:
 		return "✅"
-	case "FAILED":
+	case stateFailed:
 		return "❌"
 	case "ERROR":
 		return "🔴"
@@ -100,9 +119,9 @@ func stateToText(state string) string {
 	switch state {
 	case "INPROGRESS":
 		return "is running"
-	case "SUCCESSFUL":
+	case stateSuccessful:
 		return "passed"
-	case "FAILED":
+	case stateFailed:
 		return "failed"
 	default:
 		return state
