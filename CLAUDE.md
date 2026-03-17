@@ -60,6 +60,9 @@ bitslack/
 │   └── skills/          # Superpowers skills: committing
 │
 ├── .github/
+│   ├── workflows/
+│   │   ├── ci.yml           # CI: test (Go 1.24 + stable, ubuntu + macos), lint, arch-lint, govulncheck
+│   │   └── release.yml      # Auto-create GitHub Release on version tags
 │   ├── ISSUE_TEMPLATE/  # bug_report.md, feature_request.md
 │   └── pull_request_template.md
 │
@@ -141,16 +144,19 @@ GET /repositories/{workspace}/{repo}/commit/{hash}/pullrequests
 
 Uses `chat.postMessage` with the `thread_ts` field to post replies into an existing thread.
 
-The caller provides a Slack Bot Token (`xoxb-...`) at construction time — the library has no opinion on how it is stored or retrieved:
+The caller provides tokens at construction time — the library has no opinion on how they are stored or retrieved:
 
 ```go
 client := bitslack.New(bitslack.Config{
-    SlackToken: "xoxb-...",
+    SlackToken:       "xoxb-...",
+    BitbucketUsername: "user@example.com",
+    BitbucketToken:   "atlassian-api-token",
     // adapters...
 })
 ```
 
-Required OAuth scopes: `chat:write`. Add `chat:write.public` if the bot needs to post to channels it hasn't been explicitly invited to.
+- **Slack**: Bot token (`xoxb-...`). Required OAuth scopes: `chat:write`. Add `chat:write.public` if the bot needs to post to channels it hasn't been explicitly invited to.
+- **Bitbucket**: Atlassian API token with `read:repository:bitbucket` and `read:pullrequest:bitbucket` scopes. Uses HTTP Basic auth (username + token).
 
 ### Testing Strategy
 
