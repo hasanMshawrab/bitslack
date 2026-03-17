@@ -206,11 +206,12 @@ func TestReply_PipelineSuccessful(t *testing.T) {
 		Key: event.KeyPipelineSpanCreated,
 		Pipeline: &event.PipelineRunEvent{
 			PipelineRun: event.PipelineRun{
-				RunNumber: 5,
-				Result:    "SUCCESSFUL",
-				Trigger:   "PUSH",
-				RefName:   "feature/add-feature-x",
-				URL:       "https://bitbucket.org/myworkspace/my-repo/pipelines/results/{aa111111}",
+				RunNumber:  5,
+				Result:     "SUCCESSFUL",
+				Trigger:    "PUSH",
+				RefName:    "feature/add-feature-x",
+				URL:        "https://bitbucket.org/myworkspace/my-repo/pipelines/results/{aa111111}",
+				Repository: event.Repository{Name: "my-repo"},
 			},
 		},
 	}
@@ -221,6 +222,7 @@ func TestReply_PipelineSuccessful(t *testing.T) {
 	assertContains(t, text, "✅")
 	assertContains(t, text, "<https://bitbucket.org/myworkspace/my-repo/pipelines/results/{aa111111}|#5>")
 	assertContains(t, text, "feature/add-feature-x")
+	assertContains(t, text, "• my-repo")
 }
 
 func TestReply_PipelineFailed(t *testing.T) {
