@@ -271,7 +271,15 @@ func (c *Client) postPipelineToLinkedPR(
 	}
 
 	if !found {
-		text, blocks := format.OpeningMessage(pr, userResolver(c.configStore))
+		// GetOpenPRForBranch uses the list endpoint which omits the reviewers field.
+		// Fetch the full PR details so the opening message includes reviewers.
+		fullPR, fetchErr := c.bbClient.GetPullRequest(ctx, workspace, repoSlug, pr.ID)
+		if fetchErr != nil {
+			c.logger.Error(fmt.Sprintf("bitslack: fetch PR %s#%d: %v", repoFullName, pr.ID, fetchErr))
+			return false
+		}
+
+		text, blocks := format.OpeningMessage(fullPR, userResolver(c.configStore))
 		ts, err = c.slackClient.PostMessage(ctx, channel, "", text, blocks)
 		if err != nil {
 			c.logger.Error(fmt.Sprintf("bitslack: post opening message for %s: %v", prKey, err))
