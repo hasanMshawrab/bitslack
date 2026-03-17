@@ -100,10 +100,13 @@ The library ships no concrete adapter implementations — those live in the call
 ### Opening Message Format
 
 The first message posted for a PR (either on `pullrequest:created` or backfilled) must display:
-- **PR title** (bold)
-- **Author** — Slack @mention if an account ID mapping exists, otherwise plain Bitbucket nickname
 - **Repository** name
+- **PR title**
+- **PR number** — rendered as a clickable Slack link (`<URL|#id>`)
+- **Author** — Slack @mention if an account ID mapping exists, otherwise plain Bitbucket nickname
 - **Reviewers** — each as a Slack @mention if mapped, otherwise plain nickname
+
+Each field appears on its own line with a bold label (e.g. `*PR Title:* …`). The metadata fields (repository, title, PR number) are grouped in one Block Kit section; the people fields (author, reviewers) in a second section.
 
 ### Opening Message Updates
 
