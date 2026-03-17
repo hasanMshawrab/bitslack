@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    environment:
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - BITBUCKET_TOKEN=${BITBUCKET_TOKEN}
+      - BITSLACK_CHANNEL_MAP=myworkspace/my-repo=C001ENG
+      - BITSLACK_USER_MAP=janeauthor=U001JANE,bobreviewer=U002BOB
+    ports:
+      - "8080:8080"
+
+  # Future: add slack-stub and redis services for E2E testing
