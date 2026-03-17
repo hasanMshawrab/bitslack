@@ -1,3 +1,5 @@
+// Package slack provides a minimal Slack Web API client used internally
+// by bitslack to post and update messages via chat.postMessage and chat.update.
 package slack
 
 import (

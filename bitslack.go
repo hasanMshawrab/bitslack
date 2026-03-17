@@ -1,3 +1,22 @@
+// Package bitslack routes Bitbucket webhook events to Slack as threaded messages.
+// All events for a given pull request are posted as replies under a single
+// opening message, keeping the Slack channel organised.
+//
+// Consumers embed the library by constructing a [Client] and calling
+// [Client.Handler] from their HTTP server:
+//
+//	client, err := bitslack.New(bitslack.Config{
+//	    SlackToken:        "xoxb-...",
+//	    BitbucketUsername: "user@example.com",
+//	    BitbucketToken:    "atlassian-api-token",
+//	    ThreadStore:       myThreadStore,
+//	    ConfigStore:       myConfigStore,
+//	})
+//	// in your HTTP handler:
+//	client.Handler(r.Context(), r.Header.Get("X-Event-Key"), body)
+//
+// The library is backend-agnostic. Callers supply concrete implementations of
+// [ThreadStore], [ConfigStore], and optionally [Logger].
 package bitslack
 
 import (

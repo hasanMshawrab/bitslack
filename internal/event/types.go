@@ -1,3 +1,5 @@
+// Package event defines the canonical types for Bitbucket webhook payloads
+// and provides the Parse function for routing raw JSON to those types.
 package event
 
 // Event key constants — single source of truth for routing.

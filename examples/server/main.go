@@ -1,10 +1,16 @@
 // Command server is a reference implementation showing how to wire up
 // the bitslack library with simple in-memory adapters.
 //
+// It exposes a single endpoint:
+//
+//	POST /webhook  — receives Bitbucket webhook events (configure this URL in
+//	                 Bitbucket repository settings → Webhooks)
+//
 // Environment variables:
 //
 //	SLACK_BOT_TOKEN      - Slack bot token (xoxb-...)
-//	BITBUCKET_TOKEN      - Bitbucket access token
+//	BITBUCKET_USERNAME   - Bitbucket account email used for API auth
+//	BITBUCKET_TOKEN      - Bitbucket API access token
 //	BITSLACK_CHANNEL_MAP - Repo-to-channel mapping: "workspace/repo=CHANNELID,..."
 //	BITSLACK_USER_MAP    - User-to-Slack mapping: "bbuser=SLACKID,..."
 //	PORT                 - HTTP listen port (default: 8080)

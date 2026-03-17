@@ -1,3 +1,5 @@
+// Package bitbucket provides a minimal Bitbucket REST API client used internally
+// by bitslack to resolve commit hashes and branch names to pull requests.
 package bitbucket
 
 import (

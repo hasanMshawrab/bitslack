@@ -1,3 +1,5 @@
+// Package testutil provides mock implementations of the bitslack adapter
+// interfaces for use in tests.
 package testutil
 
 import (

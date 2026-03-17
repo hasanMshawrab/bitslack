@@ -1,3 +1,5 @@
+// Package format produces Slack message text and Block Kit blocks from
+// parsed Bitbucket webhook events.
 package format
 
 import (
