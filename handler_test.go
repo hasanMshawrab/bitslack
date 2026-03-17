@@ -43,6 +43,9 @@ type testHarness struct {
 
 	// openPRForBranchEmpty makes the /pullrequests?q=... endpoint return an empty list.
 	openPRForBranchEmpty bool
+	// openPRListOmitsReviewers makes the /pullrequests?q=... endpoint return a PR without
+	// reviewers, simulating real Bitbucket API list endpoint behaviour.
+	openPRListOmitsReviewers bool
 }
 
 func newHarness(t *testing.T) *testHarness {
@@ -97,10 +100,14 @@ func newHarness(t *testing.T) *testHarness {
 			w.Header().Set("Content-Type", "application/json")
 			h.mu.Lock()
 			empty := h.openPRForBranchEmpty
+			omitReviewers := h.openPRListOmitsReviewers
 			h.mu.Unlock()
-			if empty {
+			switch {
+			case empty:
 				fmt.Fprint(w, `{"values":[]}`)
-			} else {
+			case omitReviewers:
+				fmt.Fprint(w, bbOpenPRListNoReviewers())
+			default:
 				fmt.Fprint(w, bbCommitPRsResponse())
 			}
 			return
@@ -211,6 +218,42 @@ func bbPRResponse() string {
 // bbCommitPRsResponse returns a Bitbucket commit-to-PRs list response.
 func bbCommitPRsResponse() string {
 	return fmt.Sprintf(`{"values": [%s]}`, bbPRResponse())
+}
+
+// bbOpenPRListNoReviewers returns a Bitbucket list-PRs response that omits the reviewers field,
+// simulating the real Bitbucket API list endpoint which does not include reviewer details.
+func bbOpenPRListNoReviewers() string {
+	return `{"values":[{
+		"id": 42,
+		"title": "Add feature X",
+		"state": "OPEN",
+		"author": {
+			"nickname": "janeauthor",
+			"display_name": "Jane Author",
+			"uuid": "{bb673a1b}",
+			"account_id": "5b10a2844c20165700ede22h"
+		},
+		"source": {
+			"branch": {"name": "feature/add-feature-x"},
+			"commit": {"hash": "a6e5e5de3b48"},
+			"repository": {
+				"full_name": "myworkspace/my-repo",
+				"name": "my-repo",
+				"links": {"html": {"href": "https://bitbucket.org/myworkspace/my-repo"}}
+			}
+		},
+		"destination": {
+			"branch": {"name": "main"},
+			"commit": {"hash": "ce5965ddd289"},
+			"repository": {
+				"full_name": "myworkspace/my-repo",
+				"name": "my-repo",
+				"links": {"html": {"href": "https://bitbucket.org/myworkspace/my-repo"}}
+			}
+		},
+		"reviewers": [],
+		"links": {"html": {"href": "https://bitbucket.org/myworkspace/my-repo/pull-requests/42"}}
+	}]}`
 }
 
 // ---------------------------------------------------------------------------
@@ -809,6 +852,38 @@ func TestHandler_Pipeline_Backfill(t *testing.T) {
 	text, _ := calls[1].Body["text"].(string)
 	if !strings.Contains(text, "❌") {
 		t.Errorf("expected reply to contain ❌, got %q", text)
+	}
+}
+
+func TestHandler_Pipeline_Backfill_IncludesReviewers(t *testing.T) {
+	// Simulate real Bitbucket behaviour: the list endpoint (/pullrequests?q=...) omits the
+	// reviewers field, so GetOpenPRForBranch returns a PR with an empty Reviewers slice.
+	// The fix must fetch the full PR via GetPullRequest before building the opening message.
+	h := newPipelineHarness(t)
+	h.openPRListOmitsReviewers = true
+	h.pushSlackResponse(`{"ok":true,"ts":"7777.0000"}`)
+	h.pushSlackResponse(`{"ok":true,"ts":"7777.0001"}`)
+
+	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_failed.json")
+
+	err := h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+
+	calls := h.getSlackCalls()
+	if len(calls) < 1 {
+		t.Fatalf("expected at least 1 Slack call, got %d", len(calls))
+	}
+
+	// The opening message blocks should contain the reviewer (bobreviewer) fetched via
+	// the full PR endpoint, not the empty list from GetOpenPRForBranch.
+	blocksJSON, _ := json.Marshal(calls[0].Body["blocks"])
+	if !strings.Contains(string(blocksJSON), "Reviewers") {
+		t.Errorf("opening message blocks should contain Reviewers line, got %s", blocksJSON)
+	}
+	if !strings.Contains(string(blocksJSON), "U002BOB") {
+		t.Errorf("opening message blocks should contain reviewer Slack ID (U002BOB), got %s", blocksJSON)
 	}
 }
 

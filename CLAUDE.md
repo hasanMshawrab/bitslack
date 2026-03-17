@@ -157,7 +157,7 @@ PR linkage for pipeline events:
   GET /repositories/{workspace}/{repo}/pullrequests?q=source.branch.name="{branch}"&state=OPEN
   ```
   This avoids the shared-commit-hash ambiguity of commit_status events, where a hash present on multiple branches could match the wrong PR thread.
-- If a PR is found: post the pipeline result as a threaded reply (backfilling opening message if needed).
+- If a PR is found: post the pipeline result as a threaded reply (backfilling opening message if needed). The backfill path calls `GetPullRequest` (single-resource endpoint) after `GetOpenPRForBranch`, because Bitbucket's list endpoint omits the `reviewers` field — the full PR details are required to build a complete opening message.
 - If no PR is found, or `ref_type = TAG`: post a standalone top-level message to the repo channel.
 
 Consumers using Bitbucket Pipelines should enable `EventFamilyPipeline` and omit `EventFamilyCommitStatus` — Bitbucket Pipelines fires commit statuses too, and enabling both produces duplicate Slack messages for the same pipeline run.
