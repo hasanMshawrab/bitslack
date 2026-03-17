@@ -10,24 +10,24 @@ import (
 )
 
 func mapResolver(m map[string]string) format.UserResolver {
-	return func(nickname string) string {
-		return m[nickname]
+	return func(accountID string) string {
+		return m[accountID]
 	}
 }
 
 func TestOpeningMessage_WithMappedUsers(t *testing.T) {
 	pr := &event.PullRequest{
 		Title:  "Add feature X",
-		Author: event.User{Nickname: "janeauthor"},
+		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		Destination: event.Endpoint{
 			Repository: event.Repository{Name: "my-repo"},
 		},
-		Reviewers: []event.User{{Nickname: "bobreviewer"}},
+		Reviewers: []event.User{{Nickname: "bobreviewer", AccountID: "acct-bob"}},
 		HTMLURL:   "https://bitbucket.org/myworkspace/my-repo/pull-requests/1",
 	}
 	resolve := mapResolver(map[string]string{
-		"janeauthor":  "U001JANE",
-		"bobreviewer": "U002BOB",
+		"acct-jane": "U001JANE",
+		"acct-bob":  "U002BOB",
 	})
 
 	_, blocks := format.OpeningMessage(pr, resolve)
@@ -42,11 +42,11 @@ func TestOpeningMessage_WithMappedUsers(t *testing.T) {
 func TestOpeningMessage_WithUnmappedUsers(t *testing.T) {
 	pr := &event.PullRequest{
 		Title:  "Fix bug Y",
-		Author: event.User{Nickname: "janeauthor"},
+		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		Destination: event.Endpoint{
 			Repository: event.Repository{Name: "my-repo"},
 		},
-		Reviewers: []event.User{{Nickname: "bobreviewer"}},
+		Reviewers: []event.User{{Nickname: "bobreviewer", AccountID: "acct-bob"}},
 		HTMLURL:   "https://bitbucket.org/myworkspace/my-repo/pull-requests/2",
 	}
 	resolve := mapResolver(map[string]string{}) // empty — no mappings
@@ -62,20 +62,20 @@ func TestOpeningMessage_WithUnmappedUsers(t *testing.T) {
 func TestOpeningMessage_MultipleReviewers(t *testing.T) {
 	pr := &event.PullRequest{
 		Title:  "Refactor Z",
-		Author: event.User{Nickname: "janeauthor"},
+		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		Destination: event.Endpoint{
 			Repository: event.Repository{Name: "my-repo"},
 		},
 		Reviewers: []event.User{
-			{Nickname: "bobreviewer"},
-			{Nickname: "alicereviewer"},
+			{Nickname: "bobreviewer", AccountID: "acct-bob"},
+			{Nickname: "alicereviewer", AccountID: "acct-alice"},
 		},
 		HTMLURL: "https://bitbucket.org/myworkspace/my-repo/pull-requests/3",
 	}
 	resolve := mapResolver(map[string]string{
-		"janeauthor":    "U001JANE",
-		"bobreviewer":   "U002BOB",
-		"alicereviewer": "U003ALICE",
+		"acct-jane":  "U001JANE",
+		"acct-bob":   "U002BOB",
+		"acct-alice": "U003ALICE",
 	})
 
 	_, blocks := format.OpeningMessage(pr, resolve)
@@ -88,14 +88,14 @@ func TestOpeningMessage_MultipleReviewers(t *testing.T) {
 func TestOpeningMessage_NoReviewers(t *testing.T) {
 	pr := &event.PullRequest{
 		Title:  "Solo PR",
-		Author: event.User{Nickname: "janeauthor"},
+		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		Destination: event.Endpoint{
 			Repository: event.Repository{Name: "my-repo"},
 		},
 		Reviewers: nil,
 		HTMLURL:   "https://bitbucket.org/myworkspace/my-repo/pull-requests/4",
 	}
-	resolve := mapResolver(map[string]string{"janeauthor": "U001JANE"})
+	resolve := mapResolver(map[string]string{"acct-jane": "U001JANE"})
 
 	_, blocks := format.OpeningMessage(pr, resolve)
 	rendered := blocksToText(blocks)
@@ -106,19 +106,19 @@ func TestOpeningMessage_NoReviewers(t *testing.T) {
 func TestOpeningMessage_PartialMapping(t *testing.T) {
 	pr := &event.PullRequest{
 		Title:  "Partial PR",
-		Author: event.User{Nickname: "janeauthor"},
+		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		Destination: event.Endpoint{
 			Repository: event.Repository{Name: "my-repo"},
 		},
 		Reviewers: []event.User{
-			{Nickname: "bobreviewer"},
-			{Nickname: "unknownuser"},
+			{Nickname: "bobreviewer", AccountID: "acct-bob"},
+			{Nickname: "unknownuser", AccountID: "acct-unknown"},
 		},
 		HTMLURL: "https://bitbucket.org/myworkspace/my-repo/pull-requests/5",
 	}
 	resolve := mapResolver(map[string]string{
-		"janeauthor":  "U001JANE",
-		"bobreviewer": "U002BOB",
+		"acct-jane": "U001JANE",
+		"acct-bob":  "U002BOB",
 	})
 
 	_, blocks := format.OpeningMessage(pr, resolve)

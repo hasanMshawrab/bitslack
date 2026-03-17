@@ -13,8 +13,13 @@ All fixtures use consistent fake data to allow testing cross-event scenarios:
 | PR destination branch | `name` | `main` |
 | Repository | `full_name` | `myworkspace/my-repo` |
 | Author | `nickname` | `janeauthor` |
+| Author | `account_id` | `5b10a2844c20165700ede22h` |
 | Reviewer 1 | `nickname` | `bobreviewer` |
+| Reviewer 1 | `account_id` | `5b10a2844c20165700ede23i` |
 | Reviewer 2 | `nickname` | `alicereviewer` |
+| Reviewer 2 | `account_id` | `5b10a2844c20165700ede24j` |
+
+`account_id` values are the stable Bitbucket identifiers used as keys in `ConfigStore.GetSlackUserID`. They are consistent across webhook payloads and REST API responses, unlike `nickname` which is user-editable. `MockConfigStore` in `internal/testutil` is keyed by these account IDs.
 
 The commit status payloads reference the same commit hash (`b7f6f6ef4c59`) as the PR's source commit. This makes them suitable for testing the PR-resolution flow: given a commit hash from a build status event, call the Bitbucket API and resolve it back to PR `42`.
 

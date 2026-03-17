@@ -151,7 +151,7 @@ func bbPRResponse() string {
 			"nickname": "janeauthor",
 			"display_name": "Jane Author",
 			"uuid": "{bb673a1b}",
-			"account_id": "5b10a284"
+			"account_id": "5b10a2844c20165700ede22h"
 		},
 		"source": {
 			"branch": {"name": "feature/add-feature-x"},
@@ -176,7 +176,7 @@ func bbPRResponse() string {
 				"nickname": "bobreviewer",
 				"display_name": "Bob Reviewer",
 				"uuid": "{cc784b2c}",
-				"account_id": "5b10a284bob"
+				"account_id": "5b10a2844c20165700ede23i"
 			}
 		],
 		"reason": "",

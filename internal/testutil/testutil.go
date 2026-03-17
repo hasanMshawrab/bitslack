@@ -60,9 +60,10 @@ func NewMockConfigStore() *MockConfigStore {
 			"myworkspace/my-repo": "C001ENG",
 		},
 		Users: map[string]string{
-			"janeauthor":    "U001JANE",
-			"bobreviewer":   "U002BOB",
-			"alicereviewer": "U003ALICE",
+			// Keyed by Bitbucket account_id (stable across sources).
+			"5b10a2844c20165700ede22h": "U001JANE",  // janeauthor
+			"5b10a2844c20165700ede23i": "U002BOB",   // bobreviewer
+			"5b10a2844c20165700ede24j": "U003ALICE", // alicereviewer
 		},
 	}
 }

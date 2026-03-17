@@ -29,19 +29,19 @@ func Reply(ev *event.Event, resolve UserResolver) (string, error) {
 }
 
 func formatApproved(ev *event.PullRequestEvent, resolve UserResolver) string {
-	return fmt.Sprintf("%s approved this pull request", mention(ev.Actor.Nickname, resolve))
+	return fmt.Sprintf("%s approved this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
 }
 
 func formatUnapproved(ev *event.PullRequestEvent, resolve UserResolver) string {
-	return fmt.Sprintf("%s removed their approval", mention(ev.Actor.Nickname, resolve))
+	return fmt.Sprintf("%s removed their approval", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
 }
 
 func formatFulfilled(ev *event.PullRequestEvent, resolve UserResolver) string {
-	return fmt.Sprintf("%s merged this pull request", mention(ev.Actor.Nickname, resolve))
+	return fmt.Sprintf("%s merged this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
 }
 
 func formatRejected(ev *event.PullRequestEvent, resolve UserResolver) string {
-	msg := fmt.Sprintf("%s declined this pull request", mention(ev.Actor.Nickname, resolve))
+	msg := fmt.Sprintf("%s declined this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
 	if ev.PullRequest.Reason != "" {
 		msg += fmt.Sprintf("\n> %s", ev.PullRequest.Reason)
 	}
@@ -49,7 +49,7 @@ func formatRejected(ev *event.PullRequestEvent, resolve UserResolver) string {
 }
 
 func formatCommentCreated(ev *event.PullRequestEvent, resolve UserResolver) string {
-	actor := mention(ev.Actor.Nickname, resolve)
+	actor := mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve)
 	comment := ev.Comment
 	if comment == nil {
 		return fmt.Sprintf("%s commented", actor)

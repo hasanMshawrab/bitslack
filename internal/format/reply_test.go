@@ -9,8 +9,8 @@ import (
 
 func defaultResolver() format.UserResolver {
 	return mapResolver(map[string]string{
-		"janeauthor":  "U001JANE",
-		"bobreviewer": "U002BOB",
+		"acct-jane": "U001JANE",
+		"acct-bob":  "U002BOB",
 	})
 }
 
@@ -18,7 +18,7 @@ func TestReply_Approved(t *testing.T) {
 	ev := &event.Event{
 		Key: event.KeyPRApproved,
 		PullRequest: &event.PullRequestEvent{
-			Actor: event.User{Nickname: "bobreviewer"},
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
 		},
 	}
 	text, err := format.Reply(ev, defaultResolver())
@@ -33,7 +33,7 @@ func TestReply_Unapproved(t *testing.T) {
 	ev := &event.Event{
 		Key: event.KeyPRUnapproved,
 		PullRequest: &event.PullRequestEvent{
-			Actor: event.User{Nickname: "bobreviewer"},
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
 		},
 	}
 	text, err := format.Reply(ev, defaultResolver())
@@ -47,7 +47,7 @@ func TestReply_Fulfilled(t *testing.T) {
 	ev := &event.Event{
 		Key: event.KeyPRFulfilled,
 		PullRequest: &event.PullRequestEvent{
-			Actor: event.User{Nickname: "janeauthor"},
+			Actor: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		},
 	}
 	text, err := format.Reply(ev, defaultResolver())
@@ -61,7 +61,7 @@ func TestReply_Rejected(t *testing.T) {
 	ev := &event.Event{
 		Key: event.KeyPRRejected,
 		PullRequest: &event.PullRequestEvent{
-			Actor:       event.User{Nickname: "janeauthor"},
+			Actor:       event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 			PullRequest: event.PullRequest{Reason: "needs more work"},
 		},
 	}
@@ -77,7 +77,7 @@ func TestReply_CommentCreated_Inline(t *testing.T) {
 	ev := &event.Event{
 		Key: event.KeyPRCommentCreated,
 		PullRequest: &event.PullRequestEvent{
-			Actor: event.User{Nickname: "bobreviewer"},
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
 			Comment: &event.Comment{
 				Content: event.CommentContent{Raw: "fix this"},
 				Inline:  &event.InlineLocation{Path: "main.go", To: 42},
@@ -98,7 +98,7 @@ func TestReply_CommentCreated_TopLevel(t *testing.T) {
 	ev := &event.Event{
 		Key: event.KeyPRCommentCreated,
 		PullRequest: &event.PullRequestEvent{
-			Actor: event.User{Nickname: "bobreviewer"},
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
 			Comment: &event.Comment{
 				Content: event.CommentContent{Raw: "looks good"},
 				Inline:  nil,
@@ -205,7 +205,7 @@ func TestReply_UnmappedActor(t *testing.T) {
 	ev := &event.Event{
 		Key: event.KeyPRApproved,
 		PullRequest: &event.PullRequestEvent{
-			Actor: event.User{Nickname: "unknownuser"},
+			Actor: event.User{Nickname: "unknownuser", AccountID: "acct-unknown"},
 		},
 	}
 	resolve := mapResolver(map[string]string{}) // empty

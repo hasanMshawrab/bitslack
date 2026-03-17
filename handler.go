@@ -194,8 +194,8 @@ func buildPRKey(repoFullName string, prID int) string {
 // userResolver returns a format.UserResolver that looks up Slack user IDs
 // via the ConfigStore.
 func userResolver(cs ConfigStore) format.UserResolver {
-	return func(nickname string) string {
-		id, _ := cs.GetSlackUserID(nickname)
+	return func(accountID string) string {
+		id, _ := cs.GetSlackUserID(accountID)
 		return id
 	}
 }

@@ -22,9 +22,9 @@ type ConfigStore interface {
 	// to a Slack channel ID. Returns ok=false when no mapping exists.
 	GetChannel(repo string) (channelID string, ok bool)
 
-	// GetSlackUserID maps a Bitbucket username to a Slack user ID (U...).
+	// GetSlackUserID maps a Bitbucket account ID to a Slack user ID (U...).
 	// Returns ok=false when no mapping exists.
-	GetSlackUserID(username string) (slackID string, ok bool)
+	GetSlackUserID(accountID string) (slackID string, ok bool)
 }
 
 // Logger provides structured logging. If nil is passed to New(),
