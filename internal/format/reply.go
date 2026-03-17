@@ -23,6 +23,8 @@ func Reply(ev *event.Event, resolve UserResolver) (string, error) {
 		return formatCommentCreated(ev.PullRequest, resolve), nil
 	case event.KeyCommitStatusCreated, event.KeyCommitStatusUpdated:
 		return formatCommitStatus(ev.CommitStatus), nil
+	case event.KeyPipelineSpanCreated:
+		return formatPipelineRun(ev.Pipeline), nil
 	default:
 		return "", fmt.Errorf("format: unknown event key %q", ev.Key)
 	}
@@ -70,6 +72,28 @@ func formatCommitStatus(ev *event.CommitStatusEvent) string {
 	cs := ev.CommitStatus
 	stateText := stateToText(cs.State)
 	return fmt.Sprintf("%s %s (%s)\n%s", cs.Name, stateText, cs.Key, cs.URL)
+}
+
+func formatPipelineRun(ev *event.PipelineRunEvent) string {
+	run := ev.PipelineRun
+	emoji := pipelineResultEmoji(run.Result)
+	return fmt.Sprintf("%s Pipeline <#%d|#%d> • %s • %s\n%s",
+		emoji, run.RunNumber, run.RunNumber, run.Trigger, run.RefName, run.URL)
+}
+
+func pipelineResultEmoji(result string) string {
+	switch result {
+	case "SUCCESSFUL":
+		return "✅"
+	case "FAILED":
+		return "❌"
+	case "ERROR":
+		return "🔴"
+	case "STOPPED":
+		return "⏹"
+	default:
+		return "🔄"
+	}
 }
 
 func stateToText(state string) string {

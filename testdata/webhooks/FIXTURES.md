@@ -23,6 +23,8 @@ All fixtures use consistent fake data to allow testing cross-event scenarios:
 
 The commit status payloads reference the same commit hash (`b7f6f6ef4c59`) as the PR's source commit. This makes them suitable for testing the PR-resolution flow: given a commit hash from a build status event, call the Bitbucket API and resolve it back to PR `42`.
 
+The pipeline payloads for `span_created_successful.json` and `span_created_failed.json` use `feature/add-feature-x` as the target branch — the same source branch as PR `42` in the pull request fixtures. This allows testing the branch→PR linkage path without a separate mock PR. `span_created_no_pr.json` uses `main` as the target branch, which has no open PR in the test harness, exercising the standalone message path.
+
 ## Per-File Notes
 
 ### `pullrequest/created.json`
@@ -73,3 +75,19 @@ Build state is `"INPROGRESS"`. No PR ID in the payload — only commit hash `b7f
 Same build (`my-ci-tool`, commit `b7f6f6ef4c59`), state now `"SUCCESSFUL"`. Use this to test:
 - A follow-up build event on the same commit is correctly threaded under the same PR message
 - `updated_on` differs from `created_on` — both timestamps are present for either display or filtering logic
+
+### `pipeline/span_created_successful.json`
+`bbc.pipeline_run` span. Target branch `feature/add-feature-x` (same as PR `42`'s source branch), result `SUCCESSFUL`, trigger `PUSH`, run number `5`. Use this to test:
+- Branch→PR lookup: Bitbucket API is called with the branch name, returns PR `42`
+- Pipeline result is posted as a threaded reply under PR `42`'s thread
+- Backfill path: if no thread exists for PR `42`, opening message is posted first
+
+### `pipeline/span_created_failed.json`
+Same branch (`feature/add-feature-x`), result `FAILED`, run number `6`. Use this to test:
+- Failed pipeline result produces a `❌` reply in the PR thread
+- Backfill path with a failed run (opening message still posted even when the build failed)
+
+### `pipeline/span_created_no_pr.json`
+Target branch `main`, result `SUCCESSFUL`, trigger `MANUAL`. No open PR exists for `main` in the test harness. Use this to test:
+- When no open PR is found for the target branch, a standalone top-level message is posted
+- The standalone message has no `thread_ts`

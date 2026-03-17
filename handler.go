@@ -2,10 +2,12 @@ package bitslack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/hasanMshawrab/bitslack/internal/bitbucket"
 	"github.com/hasanMshawrab/bitslack/internal/event"
 	"github.com/hasanMshawrab/bitslack/internal/format"
 )
@@ -37,7 +39,9 @@ func (c *Client) Handler(ctx context.Context, eventKey string, payload []byte) e
 
 	ev, err := event.Parse(eventKey, payload)
 	if err != nil {
-		if strings.HasPrefix(eventKey, "pullrequest:") || strings.HasPrefix(eventKey, "repo:commit_status_") {
+		if strings.HasPrefix(eventKey, "pullrequest:") ||
+			strings.HasPrefix(eventKey, "repo:commit_status_") ||
+			strings.HasPrefix(eventKey, "pipeline:") {
 			return fmt.Errorf("bitslack: parse %s: %w", eventKey, err)
 		}
 		// Unknown event key — log and drop
@@ -50,6 +54,9 @@ func (c *Client) Handler(ctx context.Context, eventKey string, payload []byte) e
 	}
 	if ev.CommitStatus != nil {
 		return c.handleCommitStatusEvent(ctx, ev)
+	}
+	if ev.Pipeline != nil {
+		return c.handlePipelineEvent(ctx, ev)
 	}
 	return nil
 }
@@ -205,6 +212,80 @@ func (c *Client) handleCommitStatusEvent(ctx context.Context, ev *event.Event) e
 	}
 
 	return nil
+}
+
+// handlePipelineEvent processes pipeline:span_created webhook events.
+// Only bbc.pipeline_run spans are handled; other span types produce a nil Pipeline field and are no-ops.
+func (c *Client) handlePipelineEvent(ctx context.Context, ev *event.Event) error {
+	run := ev.Pipeline.PipelineRun
+	repoFullName := run.Repository.FullName
+
+	channel, ok := c.configStore.GetChannel(repoFullName)
+	if !ok {
+		c.logger.Warn(fmt.Sprintf("bitslack: no channel mapping for repo %q", repoFullName))
+		return nil
+	}
+
+	replyText, fmtErr := format.Reply(ev, userResolver(c.configStore))
+	if fmtErr != nil {
+		c.logger.Error(fmt.Sprintf("bitslack: format pipeline reply for %s: %v", repoFullName, fmtErr))
+		return nil
+	}
+
+	if run.RefType == "BRANCH" && c.postPipelineToLinkedPR(ctx, run, channel, replyText) {
+		return nil
+	}
+
+	// No linked PR (no open PR for branch, or TAG target): post standalone top-level message.
+	if _, err := c.slackClient.PostMessage(ctx, channel, "", replyText, nil); err != nil {
+		c.logger.Error(fmt.Sprintf("bitslack: post standalone pipeline message for %s: %v", repoFullName, err))
+	}
+	return nil
+}
+
+// postPipelineToLinkedPR finds an open PR for the pipeline's branch and posts the reply to its thread.
+// Returns true if the message was posted (PR found), false otherwise. Errors are logged internally.
+func (c *Client) postPipelineToLinkedPR(
+	ctx context.Context,
+	run event.PipelineRun,
+	channel, replyText string,
+) bool {
+	repoFullName := run.Repository.FullName
+	workspace := run.Repository.Workspace.Slug
+	repoSlug := run.Repository.Name
+
+	pr, err := c.bbClient.GetOpenPRForBranch(ctx, workspace, repoSlug, run.RefName)
+	if err != nil && !errors.Is(err, bitbucket.ErrNotFound) {
+		c.logger.Error(fmt.Sprintf("bitslack: find PR for branch %q: %v", run.RefName, err))
+		return false
+	}
+	if pr == nil {
+		return false
+	}
+
+	prKey := buildPRKey(repoFullName, pr.ID)
+	ts, found, storeErr := c.threadStore.Get(ctx, prKey)
+	if storeErr != nil {
+		c.logger.Error(fmt.Sprintf("bitslack: thread store get %q: %v", prKey, storeErr))
+		return false
+	}
+
+	if !found {
+		text, blocks := format.OpeningMessage(pr, userResolver(c.configStore))
+		ts, err = c.slackClient.PostMessage(ctx, channel, "", text, blocks)
+		if err != nil {
+			c.logger.Error(fmt.Sprintf("bitslack: post opening message for %s: %v", prKey, err))
+			return false
+		}
+		if saveErr := c.threadStore.Store(ctx, prKey, ts); saveErr != nil {
+			c.logger.Warn(fmt.Sprintf("bitslack: store thread ts for %s: %v", prKey, saveErr))
+		}
+	}
+
+	if _, err = c.slackClient.PostMessage(ctx, channel, ts, replyText, nil); err != nil {
+		c.logger.Error(fmt.Sprintf("bitslack: post pipeline reply for %s: %v", prKey, err))
+	}
+	return true
 }
 
 // buildPRKey constructs the thread store key for a PR.

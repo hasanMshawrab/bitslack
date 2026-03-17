@@ -232,3 +232,58 @@ func TestClient_AuthorizationHeader(t *testing.T) {
 func base64Encode(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
 }
+
+func TestGetOpenPRForBranch_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repositories/myworkspace/my-repo/pullrequests" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(cannedPRListJSON))
+	}))
+	defer srv.Close()
+
+	client := bitbucket.NewClient(srv.URL, "test-user", "test-token", bitbucket.WithHTTPClient(srv.Client()))
+	pr, err := client.GetOpenPRForBranch(context.Background(), "myworkspace", "my-repo", "feature/x")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pr == nil {
+		t.Fatal("expected non-nil PR")
+	}
+	if pr.ID != 42 {
+		t.Errorf("ID = %d, want 42", pr.ID)
+	}
+}
+
+func TestGetOpenPRForBranch_Empty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(cannedEmptyListJSON))
+	}))
+	defer srv.Close()
+
+	client := bitbucket.NewClient(srv.URL, "test-user", "test-token", bitbucket.WithHTTPClient(srv.Client()))
+	pr, err := client.GetOpenPRForBranch(context.Background(), "myworkspace", "my-repo", "main")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pr != nil {
+		t.Errorf("expected nil PR for empty list, got %+v", pr)
+	}
+}
+
+func TestGetOpenPRForBranch_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := bitbucket.NewClient(srv.URL, "test-user", "test-token", bitbucket.WithHTTPClient(srv.Client()))
+	_, err := client.GetOpenPRForBranch(context.Background(), "myworkspace", "my-repo", "feature/x")
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+}

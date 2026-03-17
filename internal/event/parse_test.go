@@ -265,6 +265,75 @@ func TestParse_EmptyPayload(t *testing.T) {
 	}
 }
 
+func TestParse_PipelineSpanCreated_PipelineRun(t *testing.T) {
+	payload := loadFixture(t, "pipeline/span_created_successful.json")
+	evt, err := event.Parse(event.KeyPipelineSpanCreated, payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if evt.Pipeline == nil {
+		t.Fatal("expected Pipeline to be non-nil")
+	}
+	if evt.PullRequest != nil || evt.CommitStatus != nil {
+		t.Fatal("expected PullRequest and CommitStatus to be nil")
+	}
+
+	run := evt.Pipeline.PipelineRun
+	if run.RefName != "feature/add-feature-x" {
+		t.Errorf("RefName = %q, want %q", run.RefName, "feature/add-feature-x")
+	}
+	if run.RefType != "BRANCH" {
+		t.Errorf("RefType = %q, want %q", run.RefType, "BRANCH")
+	}
+	if run.UUID != "{aa111111-1111-1111-1111-111111111111}" {
+		t.Errorf("UUID = %q, want %q", run.UUID, "{aa111111-1111-1111-1111-111111111111}")
+	}
+	if run.RunNumber != 5 {
+		t.Errorf("RunNumber = %d, want 5", run.RunNumber)
+	}
+	if run.Result != "SUCCESSFUL" {
+		t.Errorf("Result = %q, want %q", run.Result, "SUCCESSFUL")
+	}
+	if run.Trigger != "PUSH" {
+		t.Errorf("Trigger = %q, want %q", run.Trigger, "PUSH")
+	}
+	if run.Repository.FullName != "myworkspace/my-repo" {
+		t.Errorf("Repository.FullName = %q, want %q", run.Repository.FullName, "myworkspace/my-repo")
+	}
+	if run.Repository.Workspace.Slug != "myworkspace" {
+		t.Errorf("Repository.Workspace.Slug = %q, want %q", run.Repository.Workspace.Slug, "myworkspace")
+	}
+	if run.Repository.Name != "my-repo" {
+		t.Errorf("Repository.Name = %q, want %q", run.Repository.Name, "my-repo")
+	}
+	if run.URL == "" {
+		t.Error("expected URL to be non-empty")
+	}
+}
+
+func TestParse_PipelineSpanCreated_NonPipelineRunSpan(t *testing.T) {
+	// A pipeline:span_created payload containing only a step span — not a pipeline_run.
+	// Should parse without error and return an Event with nil Pipeline.
+	payload := []byte(`{
+		"resourceSpans": [{
+			"scopeSpans": [{
+				"spans": [{
+					"name": "bbc.pipeline_step",
+					"attributes": []
+				}]
+			}]
+		}]
+	}`)
+
+	evt, err := event.Parse(event.KeyPipelineSpanCreated, payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if evt.Pipeline != nil {
+		t.Error("expected Pipeline to be nil for non-pipeline_run span")
+	}
+}
+
 func TestCommitHashFromHref(t *testing.T) {
 	href := "https://api.bitbucket.org/2.0/repositories/myworkspace/my-repo/commit/b7f6f6ef4c59"
 	hash, err := event.CommitHashFromHref(href)

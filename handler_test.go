@@ -40,6 +40,9 @@ type testHarness struct {
 	slackCalls []slackCall
 	// slackResponses is a queue; each call pops one. Falls back to default.
 	slackResponses []string
+
+	// openPRForBranchEmpty makes the /pullrequests?q=... endpoint return an empty list.
+	openPRForBranchEmpty bool
 }
 
 func newHarness(t *testing.T) *testHarness {
@@ -86,6 +89,20 @@ func newHarness(t *testing.T) *testHarness {
 		if strings.Contains(path, "/commit/") && strings.HasSuffix(path, "/pullrequests") {
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, bbCommitPRsResponse())
+			return
+		}
+
+		// GET /repositories/{ws}/{repo}/pullrequests?q=source.branch.name=... (open PR for branch)
+		if strings.HasSuffix(path, "/pullrequests") && !strings.Contains(path, "/commit/") {
+			w.Header().Set("Content-Type", "application/json")
+			h.mu.Lock()
+			empty := h.openPRForBranchEmpty
+			h.mu.Unlock()
+			if empty {
+				fmt.Fprint(w, `{"values":[]}`)
+			} else {
+				fmt.Fprint(w, bbCommitPRsResponse())
+			}
 			return
 		}
 
@@ -711,6 +728,122 @@ func TestHandler_BitbucketAPIFails(t *testing.T) {
 	calls := h.getSlackCalls()
 	if len(calls) != 0 {
 		t.Errorf("expected 0 Slack calls after BB failure, got %d", len(calls))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline event tests
+// ---------------------------------------------------------------------------
+
+func newPipelineHarness(t *testing.T) *testHarness {
+	t.Helper()
+	h := newHarness(t)
+	client, err := bitslack.New(bitslack.Config{
+		SlackToken:        "xoxb-test",
+		BitbucketUsername: "bb-user",
+		BitbucketToken:    "bb-test",
+		SlackBaseURL:      h.SlackServer.URL,
+		BitbucketBaseURL:  h.BBServer.URL,
+		ThreadStore:       h.ThreadStore,
+		ConfigStore:       h.ConfigStore,
+		Logger:            h.Logger,
+		EnabledEvents:     []bitslack.EventFamily{bitslack.EventFamilyPipeline},
+	})
+	if err != nil {
+		t.Fatalf("bitslack.New: %v", err)
+	}
+	h.Client = client
+	return h
+}
+
+func TestHandler_Pipeline_LinkedToPRExistingThread(t *testing.T) {
+	h := newPipelineHarness(t)
+	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
+	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_successful.json")
+
+	err := h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+
+	calls := h.getSlackCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 Slack call (reply), got %d: %+v", len(calls), calls)
+	}
+	if calls[0].Path != "/chat.postMessage" {
+		t.Errorf("expected /chat.postMessage, got %s", calls[0].Path)
+	}
+	if ts, _ := calls[0].Body["thread_ts"].(string); ts != "9999.0000" {
+		t.Errorf("expected thread_ts=9999.0000, got %v", calls[0].Body["thread_ts"])
+	}
+	text, _ := calls[0].Body["text"].(string)
+	if !strings.Contains(text, "✅") {
+		t.Errorf("expected reply to contain ✅, got %q", text)
+	}
+}
+
+func TestHandler_Pipeline_Backfill(t *testing.T) {
+	h := newPipelineHarness(t)
+	h.pushSlackResponse(`{"ok":true,"ts":"7777.0000"}`)
+	h.pushSlackResponse(`{"ok":true,"ts":"7777.0001"}`)
+
+	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_failed.json")
+
+	err := h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+
+	calls := h.getSlackCalls()
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 Slack calls (opening + reply), got %d: %+v", len(calls), calls)
+	}
+	// First: opening message (no thread_ts)
+	if ts, ok := calls[0].Body["thread_ts"]; ok && ts != "" {
+		t.Errorf("opening message should have empty thread_ts, got %v", ts)
+	}
+	// Second: reply with thread_ts from opening
+	if ts, _ := calls[1].Body["thread_ts"].(string); ts != "7777.0000" {
+		t.Errorf("expected thread_ts=7777.0000, got %v", calls[1].Body["thread_ts"])
+	}
+	text, _ := calls[1].Body["text"].(string)
+	if !strings.Contains(text, "❌") {
+		t.Errorf("expected reply to contain ❌, got %q", text)
+	}
+}
+
+func TestHandler_Pipeline_StandaloneNoPR(t *testing.T) {
+	h := newPipelineHarness(t)
+	h.openPRForBranchEmpty = true
+	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_no_pr.json")
+
+	err := h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+
+	calls := h.getSlackCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 Slack call (standalone), got %d: %+v", len(calls), calls)
+	}
+	// Standalone: no thread_ts
+	if ts, ok := calls[0].Body["thread_ts"]; ok && ts != "" {
+		t.Errorf("standalone message should have empty thread_ts, got %v", ts)
+	}
+}
+
+func TestHandler_Pipeline_StepSpanSkipped(t *testing.T) {
+	h := newPipelineHarness(t)
+	payload := []byte(`{"resourceSpans":[{"scopeSpans":[{"spans":[{"name":"bbc.pipeline_step","attributes":[]}]}]}]}`)
+
+	err := h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+
+	calls := h.getSlackCalls()
+	if len(calls) != 0 {
+		t.Errorf("expected 0 Slack calls for step span, got %d", len(calls))
 	}
 }
 

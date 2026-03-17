@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -39,6 +40,8 @@ func Parse(eventKey string, payload []byte) (*Event, error) {
 		return parsePullRequestEvent(eventKey, payload)
 	case strings.HasPrefix(eventKey, "repo:commit_status_"):
 		return parseCommitStatusEvent(eventKey, payload)
+	case strings.HasPrefix(eventKey, "pipeline:"):
+		return parsePipelineSpanEvent(eventKey, payload)
 	default:
 		return nil, fmt.Errorf("unknown event key: %s", eventKey)
 	}
@@ -254,6 +257,89 @@ func parsePullRequestEvent(eventKey string, payload []byte) (*Event, error) {
 		Key:         eventKey,
 		PullRequest: evt,
 	}, nil
+}
+
+// --- OTel wire types for pipeline:span_created ---
+
+type wireOTelValue struct {
+	StringValue string `json:"stringValue"`
+	IntValue    string `json:"intValue"` // OTel int64 serialised as string in protobuf JSON
+}
+
+type wireOTelAttribute struct {
+	Key   string        `json:"key"`
+	Value wireOTelValue `json:"value"`
+}
+
+type wireOTelSpan struct {
+	Name       string              `json:"name"`
+	Attributes []wireOTelAttribute `json:"attributes"`
+}
+
+type wireOTelScopeSpan struct {
+	Spans []wireOTelSpan `json:"spans"`
+}
+
+type wireOTelResourceSpan struct {
+	ScopeSpans []wireOTelScopeSpan `json:"scopeSpans"`
+}
+
+type wirePipelineSpanPayload struct {
+	ResourceSpans []wireOTelResourceSpan `json:"resourceSpans"`
+}
+
+func parsePipelineSpanEvent(eventKey string, payload []byte) (*Event, error) {
+	var w wirePipelineSpanPayload
+	if err := json.Unmarshal(payload, &w); err != nil {
+		return nil, fmt.Errorf("parsing pipeline span event: %w", err)
+	}
+
+	// Find the first bbc.pipeline_run span — ignore step/command/container spans.
+	for _, rs := range w.ResourceSpans {
+		for _, ss := range rs.ScopeSpans {
+			for _, span := range ss.Spans {
+				if span.Name != "bbc.pipeline_run" {
+					continue
+				}
+				// Build an attribute map for O(1) lookup.
+				attrs := make(map[string]wireOTelValue, len(span.Attributes))
+				for _, a := range span.Attributes {
+					attrs[a.Key] = a.Value
+				}
+
+				fullName := attrs["pipeline.repository.full_name"].StringValue
+				var repo Repository
+				repo.FullName = fullName
+				if workspace, repoSlug, ok := strings.Cut(fullName, "/"); ok {
+					repo.Workspace = Workspace{Slug: workspace}
+					repo.Name = repoSlug
+				}
+
+				runNumber, _ := strconv.Atoi(attrs["pipeline_run.run_number"].IntValue)
+				uuid := attrs["pipeline_run.uuid"].StringValue
+				url := fmt.Sprintf("https://bitbucket.org/%s/pipelines/results/%s", fullName, uuid)
+
+				return &Event{
+					Key: eventKey,
+					Pipeline: &PipelineRunEvent{
+						PipelineRun: PipelineRun{
+							UUID:       uuid,
+							RunNumber:  runNumber,
+							Result:     attrs["pipeline.state.result.name"].StringValue,
+							Trigger:    attrs["pipeline.trigger.name"].StringValue,
+							RefName:    attrs["pipeline.target.ref_name"].StringValue,
+							RefType:    attrs["pipeline.target.ref_type"].StringValue,
+							Repository: repo,
+							URL:        url,
+						},
+					},
+				}, nil
+			}
+		}
+	}
+
+	// No bbc.pipeline_run span found (e.g. step/command/container span) — no action needed.
+	return &Event{Key: eventKey}, nil
 }
 
 func parseCommitStatusEvent(eventKey string, payload []byte) (*Event, error) {

@@ -11,6 +11,7 @@ const (
 	KeyPRCommentCreated    = "pullrequest:comment_created"
 	KeyCommitStatusCreated = "repo:commit_status_created"
 	KeyCommitStatusUpdated = "repo:commit_status_updated"
+	KeyPipelineSpanCreated = "pipeline:span_created"
 )
 
 // User represents any Bitbucket user reference.
@@ -124,10 +125,30 @@ type CommitStatusEvent struct {
 	Repository   Repository
 }
 
-// Event is a discriminated union of the two event families.
-// Exactly one of PullRequest or CommitStatus is non-nil after Parse.
+// PipelineRun holds data for a single Bitbucket Pipelines run,
+// extracted from a bbc.pipeline_run OTel span.
+type PipelineRun struct {
+	UUID       string
+	RunNumber  int
+	Result     string // "SUCCESSFUL", "FAILED", "ERROR", "STOPPED"
+	Trigger    string // "PUSH", "MANUAL", "SCHEDULED"
+	RefName    string // branch or tag name
+	RefType    string // "BRANCH" or "TAG"
+	Repository Repository
+	URL        string // link to the pipeline run in Bitbucket UI
+}
+
+// PipelineRunEvent is the parsed form of a pipeline:span_created bbc.pipeline_run span.
+type PipelineRunEvent struct {
+	PipelineRun PipelineRun
+}
+
+// Event is a discriminated union of all event families.
+// Exactly one of PullRequest, CommitStatus, or Pipeline is non-nil after Parse
+// (Pipeline may be nil for non-pipeline_run span types).
 type Event struct {
 	Key          string
 	PullRequest  *PullRequestEvent
 	CommitStatus *CommitStatusEvent
+	Pipeline     *PipelineRunEvent
 }

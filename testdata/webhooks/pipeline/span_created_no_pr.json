@@ -1,0 +1,30 @@
+{
+  "resourceSpans": [
+    {
+      "resource": { "attributes": [] },
+      "scopeSpans": [
+        {
+          "scope": { "name": "bitbucket-pipelines", "version": "1.0" },
+          "spans": [
+            {
+              "traceId": "CCCCCCCCCCCCCCCCCCCCCC==",
+              "spanId": "CCCCCCCCCCC=",
+              "name": "bbc.pipeline_run",
+              "startTimeUnixNano": "1705312200000000000",
+              "endTimeUnixNano": "1705312500000000000",
+              "attributes": [
+                { "key": "pipeline.target.ref_name",       "value": { "stringValue": "main" } },
+                { "key": "pipeline.target.ref_type",       "value": { "stringValue": "BRANCH" } },
+                { "key": "pipeline_run.uuid",              "value": { "stringValue": "{cc333333-3333-3333-3333-333333333333}" } },
+                { "key": "pipeline_run.run_number",        "value": { "intValue": "12" } },
+                { "key": "pipeline.state.result.name",     "value": { "stringValue": "SUCCESSFUL" } },
+                { "key": "pipeline.trigger.name",          "value": { "stringValue": "MANUAL" } },
+                { "key": "pipeline.repository.full_name",  "value": { "stringValue": "myworkspace/my-repo" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

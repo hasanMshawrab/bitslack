@@ -201,6 +201,77 @@ func TestReply_UnknownKey(t *testing.T) {
 	}
 }
 
+func TestReply_PipelineSuccessful(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				RunNumber: 5,
+				Result:    "SUCCESSFUL",
+				Trigger:   "PUSH",
+				RefName:   "feature/add-feature-x",
+				URL:       "https://bitbucket.org/myworkspace/my-repo/pipelines/results/{aa111111}",
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "✅")
+	assertContains(t, text, "#5")
+	assertContains(t, text, "feature/add-feature-x")
+}
+
+func TestReply_PipelineFailed(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				RunNumber: 6,
+				Result:    "FAILED",
+				Trigger:   "PUSH",
+				RefName:   "feature/add-feature-x",
+				URL:       "https://bitbucket.org/myworkspace/my-repo/pipelines/results/{bb222222}",
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "❌")
+	assertContains(t, text, "#6")
+}
+
+func TestReply_PipelineError(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{Result: "ERROR", RefName: "main", URL: "https://example.com"},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "🔴")
+}
+
+func TestReply_PipelineStopped(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{Result: "STOPPED", RefName: "main", URL: "https://example.com"},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "⏹")
+}
+
 func TestReply_UnmappedActor(t *testing.T) {
 	ev := &event.Event{
 		Key: event.KeyPRApproved,

@@ -3,6 +3,7 @@ package bitbucket
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"github.com/hasanMshawrab/bitslack/internal/event"
 )
@@ -94,6 +95,24 @@ func (c *Client) GetPullRequestsForCommit(
 		prs[i] = toPullRequest(r)
 	}
 	return prs, nil
+}
+
+// GetOpenPRForBranch returns the first open PR whose source branch matches the given name,
+// or nil if none exists.
+func (c *Client) GetOpenPRForBranch(ctx context.Context, workspace, repo, branch string) (*event.PullRequest, error) {
+	params := url.Values{}
+	params.Set("q", fmt.Sprintf(`source.branch.name="%s"`, branch))
+	params.Set("state", "OPEN")
+	path := fmt.Sprintf("/repositories/%s/%s/pullrequests?%s", workspace, repo, params.Encode())
+
+	var raw prListResponse
+	if err := c.get(ctx, path, &raw); err != nil {
+		return nil, err
+	}
+	if len(raw.Values) == 0 {
+		return nil, nil //nolint:nilnil // nil PR signals "not found" without an error; caller checks for nil
+	}
+	return toPullRequest(raw.Values[0]), nil
 }
 
 // toPullRequest maps a Bitbucket API response to the canonical event.PullRequest type.
