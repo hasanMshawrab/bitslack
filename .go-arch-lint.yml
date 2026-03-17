@@ -1,0 +1,49 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+
+components:
+  root:
+    in: .
+  event:
+    in: internal/event
+  bitbucket:
+    in: internal/bitbucket
+  slack:
+    in: internal/slack
+  format:
+    in: internal/format
+  testutil:
+    in: internal/testutil
+  examples:
+    in: examples/**
+
+commonComponents:
+  - event
+
+deps:
+  bitbucket:
+    mayDependOn:
+      - bitbucket
+      - event
+  format:
+    mayDependOn:
+      - format
+      - event
+      - slack
+  slack:
+    mayDependOn:
+      - slack
+  root:
+    mayDependOn:
+      - root
+      - event
+      - bitbucket
+      - slack
+      - format
+      - testutil
+  examples:
+    mayDependOn:
+      - root
