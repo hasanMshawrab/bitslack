@@ -15,24 +15,26 @@ type UserResolver func(accountID string) string
 // OpeningMessage produces Block Kit blocks for the PR opening message.
 // Returns a plain-text fallback string and structured blocks.
 func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slack.Block) {
-	// Title block: *{title}*  |  {repo.Name}
-	titleText := fmt.Sprintf("*%s*  |  %s", pr.Title, pr.Destination.Repository.Name)
-	titleBlock := slack.Block{
+	// Metadata block: Repository, PR Title, PR No (as clickable link)
+	prLink := fmt.Sprintf("<%s|#%d>", pr.HTMLURL, pr.ID)
+	metaText := fmt.Sprintf("*Repository:* %s\n*PR Title:* %s\n*PR No:* %s",
+		pr.Destination.Repository.Name, pr.Title, prLink)
+	metaBlock := slack.Block{
 		Type: "section",
 		Text: &slack.TextObject{
 			Type: "mrkdwn",
-			Text: titleText,
+			Text: metaText,
 		},
 	}
 
-	// People block: Author: {mention}  |  Reviewers: {mention1}, {mention2}
-	peopleText := fmt.Sprintf("Author: %s", mention(pr.Author.AccountID, pr.Author.Nickname, resolve))
+	// People block: Author and optional Reviewers, each on its own line
+	peopleText := fmt.Sprintf("*Author:* %s", mention(pr.Author.AccountID, pr.Author.Nickname, resolve))
 	if len(pr.Reviewers) > 0 {
 		reviewerMentions := make([]string, len(pr.Reviewers))
 		for i, r := range pr.Reviewers {
 			reviewerMentions[i] = mention(r.AccountID, r.Nickname, resolve)
 		}
-		peopleText += fmt.Sprintf("  |  Reviewers: %s", strings.Join(reviewerMentions, ", "))
+		peopleText += fmt.Sprintf("\n*Reviewers:* %s", strings.Join(reviewerMentions, ", "))
 	}
 	peopleBlock := slack.Block{
 		Type: "section",
@@ -42,16 +44,7 @@ func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slac
 		},
 	}
 
-	// Link block: PR URL
-	linkBlock := slack.Block{
-		Type: "section",
-		Text: &slack.TextObject{
-			Type: "mrkdwn",
-			Text: pr.HTMLURL,
-		},
-	}
-
-	blocks := []slack.Block{titleBlock, peopleBlock, linkBlock}
+	blocks := []slack.Block{metaBlock, peopleBlock}
 
 	// Plain-text fallback
 	fallback := fmt.Sprintf("%s | %s", pr.Title, pr.Destination.Repository.Name)

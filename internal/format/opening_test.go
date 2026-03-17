@@ -17,6 +17,7 @@ func mapResolver(m map[string]string) format.UserResolver {
 
 func TestOpeningMessage_WithMappedUsers(t *testing.T) {
 	pr := &event.PullRequest{
+		ID:     1,
 		Title:  "Add feature X",
 		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		Destination: event.Endpoint{
@@ -35,12 +36,14 @@ func TestOpeningMessage_WithMappedUsers(t *testing.T) {
 
 	assertContains(t, rendered, "<@U001JANE>")
 	assertContains(t, rendered, "<@U002BOB>")
-	assertContains(t, rendered, "*Add feature X*")
-	assertContains(t, rendered, "my-repo")
+	assertContains(t, rendered, "*PR Title:* Add feature X")
+	assertContains(t, rendered, "*Repository:* my-repo")
+	assertContains(t, rendered, "<https://bitbucket.org/myworkspace/my-repo/pull-requests/1|#1>")
 }
 
 func TestOpeningMessage_WithUnmappedUsers(t *testing.T) {
 	pr := &event.PullRequest{
+		ID:     2,
 		Title:  "Fix bug Y",
 		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		Destination: event.Endpoint{
@@ -61,6 +64,7 @@ func TestOpeningMessage_WithUnmappedUsers(t *testing.T) {
 
 func TestOpeningMessage_MultipleReviewers(t *testing.T) {
 	pr := &event.PullRequest{
+		ID:     3,
 		Title:  "Refactor Z",
 		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		Destination: event.Endpoint{
@@ -87,6 +91,7 @@ func TestOpeningMessage_MultipleReviewers(t *testing.T) {
 
 func TestOpeningMessage_NoReviewers(t *testing.T) {
 	pr := &event.PullRequest{
+		ID:     4,
 		Title:  "Solo PR",
 		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		Destination: event.Endpoint{
@@ -105,6 +110,7 @@ func TestOpeningMessage_NoReviewers(t *testing.T) {
 
 func TestOpeningMessage_PartialMapping(t *testing.T) {
 	pr := &event.PullRequest{
+		ID:     5,
 		Title:  "Partial PR",
 		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		Destination: event.Endpoint{
