@@ -219,7 +219,7 @@ func TestReply_PipelineSuccessful(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertContains(t, text, "✅")
-	assertContains(t, text, "#5")
+	assertContains(t, text, "<https://bitbucket.org/myworkspace/my-repo/pipelines/results/{aa111111}|#5>")
 	assertContains(t, text, "feature/add-feature-x")
 }
 

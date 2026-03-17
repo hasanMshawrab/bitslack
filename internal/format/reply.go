@@ -77,8 +77,8 @@ func formatCommitStatus(ev *event.CommitStatusEvent) string {
 func formatPipelineRun(ev *event.PipelineRunEvent) string {
 	run := ev.PipelineRun
 	emoji := pipelineResultEmoji(run.Result)
-	return fmt.Sprintf("%s Pipeline <#%d|#%d> • %s • %s\n%s",
-		emoji, run.RunNumber, run.RunNumber, run.Trigger, run.RefName, run.URL)
+	return fmt.Sprintf("%s Pipeline <%s|#%d> • %s • %s",
+		emoji, run.URL, run.RunNumber, run.Trigger, run.RefName)
 }
 
 func pipelineResultEmoji(result string) string {
