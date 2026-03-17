@@ -91,7 +91,7 @@ bitslack/
 
 The library is backend-agnostic. Consumers construct the core engine by injecting adapters that satisfy these interfaces:
 
-- **ConfigStore** — provides repo→channel mapping and username→Slack user ID lookup. The library only calls lookup methods (`GetChannel`, `GetSlackUserID`); it never loads or caches data itself. The consumer controls their own data lifecycle — preloading, caching, or fetching on demand is entirely up to them.
+- **ConfigStore** — provides repo→channel mapping and Bitbucket account ID→Slack user ID lookup. The library only calls lookup methods (`GetChannel`, `GetSlackUserID`); it never loads or caches data itself. The consumer controls their own data lifecycle — preloading, caching, or fetching on demand is entirely up to them. `GetSlackUserID` accepts a Bitbucket `account_id` (not `nickname`) because `account_id` is stable across webhook payloads and REST API responses, whereas `nickname` is user-editable and inconsistent between the two sources.
 - **ThreadStore** — stores and retrieves the PR→Slack thread `ts` mapping. Needs TTL support (30-day expiry per PR). Could be backed by Redis, Memcached, an in-process map, etc.
 - **Logger** — structured logging with three methods: `Info(message string)`, `Warn(message string)`, `Error(message string)`. If none is provided, the library defaults to a no-op logger.
 
@@ -101,9 +101,9 @@ The library ships no concrete adapter implementations — those live in the call
 
 The first message posted for a PR (either on `pullrequest:created` or backfilled) must display:
 - **PR title** (bold)
-- **Author** — Slack @mention if a username mapping exists, otherwise plain Bitbucket username
+- **Author** — Slack @mention if an account ID mapping exists, otherwise plain Bitbucket nickname
 - **Repository** name
-- **Reviewers** — each as a Slack @mention if mapped, otherwise plain username
+- **Reviewers** — each as a Slack @mention if mapped, otherwise plain nickname
 
 ### Opening Message Updates
 
