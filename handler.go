@@ -10,10 +10,31 @@ import (
 	"github.com/hasanMshawrab/bitslack/internal/format"
 )
 
+// eventFamily returns the EventFamily for a given event key, or "" if unknown.
+func eventFamily(eventKey string) EventFamily {
+	switch {
+	case strings.HasPrefix(eventKey, "pullrequest:"):
+		return EventFamilyPullRequest
+	case strings.HasPrefix(eventKey, "repo:commit_status_"):
+		return EventFamilyCommitStatus
+	case strings.HasPrefix(eventKey, "pipeline:"):
+		return EventFamilyPipeline
+	default:
+		return ""
+	}
+}
+
 // Handler processes a Bitbucket webhook event.
 // eventKey is the X-Event-Key header value.
 // payload is the raw JSON body.
 func (c *Client) Handler(ctx context.Context, eventKey string, payload []byte) error {
+	if family := eventFamily(eventKey); family != "" {
+		if _, ok := c.enabledFamilies[family]; !ok {
+			c.logger.Warn(fmt.Sprintf("bitslack: event family %q is not enabled, dropping %q", family, eventKey))
+			return nil
+		}
+	}
+
 	ev, err := event.Parse(eventKey, payload)
 	if err != nil {
 		if strings.HasPrefix(eventKey, "pullrequest:") || strings.HasPrefix(eventKey, "repo:commit_status_") {

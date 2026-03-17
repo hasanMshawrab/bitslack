@@ -119,14 +119,15 @@ The opening message is a live document — it is edited (via `chat.update`) to s
 ### Core Flow
 
 1. Caller's HTTP server receives a Bitbucket webhook and calls `client.Handler(ctx, eventKey, payload)`.
-2. The library parses the event and identifies the PR (see "Build Status Events" below).
-3. Look up the Slack channel via `ConfigStore.GetChannel(repo)`.
-4. Look up the thread `ts` for that PR via `ThreadStore`.
-5. If no `ts` exists (new PR **or** an existing PR that predates the integration):
+2. The library checks the event's family against `Config.EnabledEvents`. If the family is not enabled, log a `Warn` and return nil (soft-drop).
+3. The library parses the event and identifies the PR (see "Build Status Events" below).
+4. Look up the Slack channel via `ConfigStore.GetChannel(repo)`.
+5. Look up the thread `ts` for that PR via `ThreadStore`.
+6. If no `ts` exists (new PR **or** an existing PR that predates the integration):
    - Call the Bitbucket API to fetch full PR details (`GET /repositories/{workspace}/{repo}/pullrequests/{id}`)
    - Post a synthetic opening message to Slack → store the returned `ts` via `ThreadStore`
    - If either step fails, log the error and drop the event gracefully (no panic, no partial state)
-6. Event-specific behavior:
+7. Event-specific behavior:
    - `pullrequest:created` — the opening message IS the notification; no separate reply is posted
    - `pullrequest:updated` — edit the opening message via `chat.update`; no reply posted
    - All other events — post as a threaded reply using `thread_ts`
@@ -170,9 +171,25 @@ All tests run offline with zero external dependencies:
 - **Integration** — `handler_test.go` tests the full public API flow using real fixture JSON files, mock adapters (`internal/testutil/`), and `httptest` servers for Slack and Bitbucket APIs. This is the most important test layer.
 - **E2E** — scaffolded in `examples/server/e2e_test.go` behind `//go:build e2e` tag for future use with the docker-compose stack.
 
+### Event Families and Opt-In
+
+Consumers declare which event families to handle via `Config.EnabledEvents`. Defaults to `[EventFamilyPullRequest]` if unset. Events from disabled families are soft-dropped (Warn log, nil return).
+
+```go
+client := bitslack.New(bitslack.Config{
+    // ...
+    EnabledEvents: []bitslack.EventFamily{
+        bitslack.EventFamilyPullRequest,
+        bitslack.EventFamilyCommitStatus,
+    },
+})
+```
+
+Consumers using Bitbucket Pipelines should enable `EventFamilyPipeline` (once implemented) and omit `EventFamilyCommitStatus` — Bitbucket Pipelines fires both, so enabling both produces duplicate notifications.
+
 ### Supported Webhook Events
 
-**Pull Request**
+**Pull Request** (`EventFamilyPullRequest` — default)
 - `pullrequest:created`
 - `pullrequest:updated`
 - `pullrequest:approved`
@@ -181,6 +198,9 @@ All tests run offline with zero external dependencies:
 - `pullrequest:rejected` (declined)
 - `pullrequest:comment_created`
 
-**Build Status**
+**Build Status** (`EventFamilyCommitStatus` — opt-in)
 - `repo:commit_status_created`
 - `repo:commit_status_updated`
+
+**Pipeline** (`EventFamilyPipeline` — reserved, not yet implemented)
+- `pipeline:span_created`
