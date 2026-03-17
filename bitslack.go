@@ -12,6 +12,18 @@ import (
 
 const defaultHTTPTimeout = 10 * time.Second
 
+// EventFamily identifies a group of related Bitbucket webhook event keys.
+type EventFamily string
+
+const (
+	// EventFamilyPullRequest enables pullrequest:* events.
+	EventFamilyPullRequest EventFamily = "pullrequest"
+	// EventFamilyCommitStatus enables repo:commit_status_* events.
+	EventFamilyCommitStatus EventFamily = "commit_status"
+	// EventFamilyPipeline enables pipeline:* events (reserved for future use).
+	EventFamilyPipeline EventFamily = "pipeline"
+)
+
 // Config holds all dependencies needed to construct a Client.
 type Config struct {
 	// SlackToken is the Slack bot token (xoxb-...). Required.
@@ -45,15 +57,23 @@ type Config struct {
 
 	// HTTPClient for outbound API calls. Defaults to 10s timeout if nil.
 	HTTPClient *http.Client
+
+	// EnabledEvents declares which event families the client will process.
+	// Defaults to [EventFamilyPullRequest] if nil or empty.
+	// Consumers using Bitbucket Pipelines should set this to
+	// [EventFamilyPullRequest, EventFamilyPipeline] and omit EventFamilyCommitStatus
+	// to avoid duplicate notifications (Bitbucket Pipelines fires both).
+	EnabledEvents []EventFamily
 }
 
 // Client is the bitslack engine. Safe for concurrent use.
 type Client struct {
-	threadStore ThreadStore
-	configStore ConfigStore
-	logger      Logger
-	bbClient    *bitbucket.Client
-	slackClient *slack.Client
+	threadStore     ThreadStore
+	configStore     ConfigStore
+	logger          Logger
+	bbClient        *bitbucket.Client
+	slackClient     *slack.Client
+	enabledFamilies map[EventFamily]struct{}
 }
 
 // New validates the config and constructs a Client.
@@ -90,10 +110,19 @@ func New(cfg Config) (*Client, error) {
 		cfg.HTTPClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 
+	if len(cfg.EnabledEvents) == 0 {
+		cfg.EnabledEvents = []EventFamily{EventFamilyPullRequest}
+	}
+	enabledFamilies := make(map[EventFamily]struct{}, len(cfg.EnabledEvents))
+	for _, f := range cfg.EnabledEvents {
+		enabledFamilies[f] = struct{}{}
+	}
+
 	return &Client{
-		threadStore: cfg.ThreadStore,
-		configStore: cfg.ConfigStore,
-		logger:      cfg.Logger,
+		threadStore:     cfg.ThreadStore,
+		configStore:     cfg.ConfigStore,
+		logger:          cfg.Logger,
+		enabledFamilies: enabledFamilies,
 		bbClient: bitbucket.NewClient(
 			cfg.BitbucketBaseURL,
 			cfg.BitbucketUsername,

@@ -385,10 +385,26 @@ func TestHandler_PullRequestCommentCreated(t *testing.T) {
 
 func TestHandler_CommitStatus_ExistingThread(t *testing.T) {
 	h := newHarness(t)
+	client, err := bitslack.New(bitslack.Config{
+		SlackToken:        "xoxb-test",
+		BitbucketUsername: "bb-user",
+		BitbucketToken:    "bb-test",
+		SlackBaseURL:      h.SlackServer.URL,
+		BitbucketBaseURL:  h.BBServer.URL,
+		ThreadStore:       h.ThreadStore,
+		ConfigStore:       h.ConfigStore,
+		Logger:            h.Logger,
+		EnabledEvents:     []bitslack.EventFamily{bitslack.EventFamilyPullRequest, bitslack.EventFamilyCommitStatus},
+	})
+	if err != nil {
+		t.Fatalf("bitslack.New: %v", err)
+	}
+	h.Client = client
+
 	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
 	payload := loadFixture(t, "testdata/webhooks/commit_status/created.json")
 
-	err := h.Client.Handler(context.Background(), "repo:commit_status_created", payload)
+	err = h.Client.Handler(context.Background(), "repo:commit_status_created", payload)
 	if err != nil {
 		t.Fatalf("Handler returned error: %v", err)
 	}
@@ -409,6 +425,22 @@ func TestHandler_CommitStatus_ExistingThread(t *testing.T) {
 
 func TestHandler_CommitStatus_Backfill(t *testing.T) {
 	h := newHarness(t)
+	client, err := bitslack.New(bitslack.Config{
+		SlackToken:        "xoxb-test",
+		BitbucketUsername: "bb-user",
+		BitbucketToken:    "bb-test",
+		SlackBaseURL:      h.SlackServer.URL,
+		BitbucketBaseURL:  h.BBServer.URL,
+		ThreadStore:       h.ThreadStore,
+		ConfigStore:       h.ConfigStore,
+		Logger:            h.Logger,
+		EnabledEvents:     []bitslack.EventFamily{bitslack.EventFamilyPullRequest, bitslack.EventFamilyCommitStatus},
+	})
+	if err != nil {
+		t.Fatalf("bitslack.New: %v", err)
+	}
+	h.Client = client
+
 	// No thread seeded — will backfill
 	// First Slack call: opening message (returns ts)
 	// Second Slack call: reply
@@ -417,7 +449,7 @@ func TestHandler_CommitStatus_Backfill(t *testing.T) {
 
 	payload := loadFixture(t, "testdata/webhooks/commit_status/created.json")
 
-	err := h.Client.Handler(context.Background(), "repo:commit_status_created", payload)
+	err = h.Client.Handler(context.Background(), "repo:commit_status_created", payload)
 	if err != nil {
 		t.Fatalf("Handler returned error: %v", err)
 	}
@@ -454,6 +486,22 @@ func TestHandler_CommitStatus_Backfill(t *testing.T) {
 
 func TestHandler_CommitStatusFailed(t *testing.T) {
 	h := newHarness(t)
+	client, err := bitslack.New(bitslack.Config{
+		SlackToken:        "xoxb-test",
+		BitbucketUsername: "bb-user",
+		BitbucketToken:    "bb-test",
+		SlackBaseURL:      h.SlackServer.URL,
+		BitbucketBaseURL:  h.BBServer.URL,
+		ThreadStore:       h.ThreadStore,
+		ConfigStore:       h.ConfigStore,
+		Logger:            h.Logger,
+		EnabledEvents:     []bitslack.EventFamily{bitslack.EventFamilyPullRequest, bitslack.EventFamilyCommitStatus},
+	})
+	if err != nil {
+		t.Fatalf("bitslack.New: %v", err)
+	}
+	h.Client = client
+
 	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
 
 	// Use the updated fixture (SUCCESSFUL) but we need a FAILED one.
@@ -463,7 +511,7 @@ func TestHandler_CommitStatusFailed(t *testing.T) {
 	payload = []byte(strings.ReplaceAll(string(payload), `"SUCCESSFUL"`, `"FAILED"`))
 	payload = []byte(strings.ReplaceAll(string(payload), `"All tests passed"`, `"Build failed"`))
 
-	err := h.Client.Handler(context.Background(), "repo:commit_status_updated", payload)
+	err = h.Client.Handler(context.Background(), "repo:commit_status_updated", payload)
 	if err != nil {
 		t.Fatalf("Handler returned error: %v", err)
 	}
@@ -663,6 +711,109 @@ func TestHandler_BitbucketAPIFails(t *testing.T) {
 	calls := h.getSlackCalls()
 	if len(calls) != 0 {
 		t.Errorf("expected 0 Slack calls after BB failure, got %d", len(calls))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// EnabledEvents tests
+// ---------------------------------------------------------------------------
+
+func TestHandler_EnabledEvents_DefaultDropsCommitStatus(t *testing.T) {
+	// newHarness sets no EnabledEvents → library defaults to PR only.
+	h := newHarness(t)
+	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
+	payload := loadFixture(t, "testdata/webhooks/commit_status/created.json")
+
+	err := h.Client.Handler(context.Background(), "repo:commit_status_created", payload)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+
+	calls := h.getSlackCalls()
+	if len(calls) != 0 {
+		t.Errorf("expected 0 Slack calls for disabled event family, got %d", len(calls))
+	}
+
+	found := false
+	for _, msg := range h.Logger.WarnMsgs {
+		if strings.Contains(msg, "event family") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected warn about disabled event family, got warns: %v", h.Logger.WarnMsgs)
+	}
+}
+
+func TestHandler_EnabledEvents_CommitStatusExplicitlyEnabled(t *testing.T) {
+	h := newHarness(t)
+	client, err := bitslack.New(bitslack.Config{
+		SlackToken:        "xoxb-test",
+		BitbucketUsername: "bb-user",
+		BitbucketToken:    "bb-test",
+		SlackBaseURL:      h.SlackServer.URL,
+		BitbucketBaseURL:  h.BBServer.URL,
+		ThreadStore:       h.ThreadStore,
+		ConfigStore:       h.ConfigStore,
+		Logger:            h.Logger,
+		EnabledEvents:     []bitslack.EventFamily{bitslack.EventFamilyPullRequest, bitslack.EventFamilyCommitStatus},
+	})
+	if err != nil {
+		t.Fatalf("bitslack.New: %v", err)
+	}
+	h.Client = client
+
+	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
+	payload := loadFixture(t, "testdata/webhooks/commit_status/created.json")
+
+	err = h.Client.Handler(context.Background(), "repo:commit_status_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+
+	calls := h.getSlackCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 Slack call, got %d: %+v", len(calls), calls)
+	}
+}
+
+func TestHandler_EnabledEvents_PRFamilyDisabled(t *testing.T) {
+	h := newHarness(t)
+	client, err := bitslack.New(bitslack.Config{
+		SlackToken:        "xoxb-test",
+		BitbucketUsername: "bb-user",
+		BitbucketToken:    "bb-test",
+		SlackBaseURL:      h.SlackServer.URL,
+		BitbucketBaseURL:  h.BBServer.URL,
+		ThreadStore:       h.ThreadStore,
+		ConfigStore:       h.ConfigStore,
+		Logger:            h.Logger,
+		EnabledEvents:     []bitslack.EventFamily{bitslack.EventFamilyCommitStatus},
+	})
+	if err != nil {
+		t.Fatalf("bitslack.New: %v", err)
+	}
+	h.Client = client
+
+	payload := loadFixture(t, "testdata/webhooks/pullrequest/created.json")
+	err = h.Client.Handler(context.Background(), "pullrequest:created", payload)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+
+	calls := h.getSlackCalls()
+	if len(calls) != 0 {
+		t.Errorf("expected 0 Slack calls for disabled PR family, got %d", len(calls))
+	}
+
+	found := false
+	for _, msg := range h.Logger.WarnMsgs {
+		if strings.Contains(msg, "event family") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected warn about disabled event family, got warns: %v", h.Logger.WarnMsgs)
 	}
 }
 
