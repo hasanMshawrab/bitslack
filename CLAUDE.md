@@ -37,7 +37,7 @@ bitslack/
 ├── handler_test.go      # Integration tests: full flow with mocks + httptest stubs
 │
 ├── internal/
-│   ├── bitbucket/       # Bitbucket REST API client (PR resolution from commit hash)
+│   ├── bitbucket/       # Bitbucket REST API client (PR/commit/branch lookups)
 │   ├── slack/           # Slack API client (chat.postMessage, chat.update)
 │   ├── event/           # Webhook event types, JSON parsing, routing by event key
 │   ├── format/          # Slack message formatting (opening message, reply text)
@@ -53,7 +53,8 @@ bitslack/
 │   └── webhooks/
 │       ├── FIXTURES.md          # Explains fixture design decisions
 │       ├── pullrequest/         # One JSON file per pullrequest:* event
-│       └── commit_status/       # One JSON file per repo:commit_status_* event
+│       ├── commit_status/       # One JSON file per repo:commit_status_* event
+│       └── pipeline/            # OTel span fixtures for pipeline:span_created
 │
 ├── .claude/
 │   ├── commands/        # Custom slash commands: /plan, /create-issue, /open-pr, /update-docs
@@ -130,7 +131,8 @@ The opening message is a live document — it is edited (via `chat.update`) to s
 7. Event-specific behavior:
    - `pullrequest:created` — the opening message IS the notification; no separate reply is posted
    - `pullrequest:updated` — edit the opening message via `chat.update`; no reply posted
-   - All other events — post as a threaded reply using `thread_ts`
+   - All other PR and commit_status events — post as a threaded reply using `thread_ts`
+   - Pipeline events — see "Pipeline Events" below
 
 ### Error Handling
 
@@ -144,6 +146,21 @@ Bitbucket `repo:commit_status_created` / `repo:commit_status_updated` events do 
 ```
 GET /repositories/{workspace}/{repo}/commit/{hash}/pullrequests
 ```
+
+### Pipeline Events
+
+`pipeline:span_created` delivers an OpenTelemetry trace. Only `bbc.pipeline_run` spans are processed; `bbc.pipeline_step`, `bbc.command`, and `bbc.container` spans are silently skipped.
+
+PR linkage for pipeline events:
+- If `pipeline.target.ref_type = BRANCH`: call the Bitbucket API to find the open PR for that branch:
+  ```
+  GET /repositories/{workspace}/{repo}/pullrequests?q=source.branch.name="{branch}"&state=OPEN
+  ```
+  This avoids the shared-commit-hash ambiguity of commit_status events, where a hash present on multiple branches could match the wrong PR thread.
+- If a PR is found: post the pipeline result as a threaded reply (backfilling opening message if needed).
+- If no PR is found, or `ref_type = TAG`: post a standalone top-level message to the repo channel.
+
+Consumers using Bitbucket Pipelines should enable `EventFamilyPipeline` and omit `EventFamilyCommitStatus` — Bitbucket Pipelines fires commit statuses too, and enabling both produces duplicate Slack messages for the same pipeline run.
 
 ### Slack Integration
 
@@ -185,7 +202,7 @@ client := bitslack.New(bitslack.Config{
 })
 ```
 
-Consumers using Bitbucket Pipelines should enable `EventFamilyPipeline` (once implemented) and omit `EventFamilyCommitStatus` — Bitbucket Pipelines fires both, so enabling both produces duplicate notifications.
+Consumers using Bitbucket Pipelines should enable `EventFamilyPipeline` and omit `EventFamilyCommitStatus` — Bitbucket Pipelines fires both, so enabling both produces duplicate notifications.
 
 ### Supported Webhook Events
 
@@ -202,5 +219,5 @@ Consumers using Bitbucket Pipelines should enable `EventFamilyPipeline` (once im
 - `repo:commit_status_created`
 - `repo:commit_status_updated`
 
-**Pipeline** (`EventFamilyPipeline` — reserved, not yet implemented)
-- `pipeline:span_created`
+**Pipeline** (`EventFamilyPipeline` — opt-in)
+- `pipeline:span_created` (only `bbc.pipeline_run` spans; step/command/container spans are skipped)
