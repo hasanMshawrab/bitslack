@@ -101,20 +101,36 @@ The library ships no concrete adapter implementations — those live in the call
 
 ### Opening Message Format
 
-The first message posted for a PR (either on `pullrequest:created` or backfilled) must display:
-- **Repository** name
-- **PR title**
-- **PR number** — rendered as a clickable Slack link (`<URL|#id>`)
-- **Author** — Slack @mention if an account ID mapping exists, otherwise plain Bitbucket nickname
-- **Reviewers** — each as a Slack @mention if mapped, otherwise plain nickname
+The first message posted for a PR (either on `pullrequest:created` or backfilled) renders in two Block Kit sections:
 
-Each field appears on its own line with a bold label (e.g. `*PR Title:* …`). The metadata fields (repository, title, PR number) are grouped in one Block Kit section; the people fields (author, reviewers) in a second section.
+**Header section** (one line):
+```
+🔀 *[{repo}] Pull Request <{url}|#{id}>* • {source branch} → {destination branch}
+```
+
+**Fields section** (indented 4 spaces):
+```
+    *Title:* {pr title}
+    *Status:* Open | Merged | Closed
+    *Author:* {mention}
+    *Reviewers:* ✅ {approved mention} • {pending mention}   ← ✅ only for approved reviewers
+    *Also approved:* {mention}                               ← only when non-reviewer participants approved
+    *Ticket:* <url|View Ticket>                             ← only when a ClickUp URL is in description
+```
+
+- `*Repository:*` labeled field is omitted — the repo name is embedded in the header.
+- Each reviewer shows `✅` if they appear in `participants` with `role="REVIEWER"` and `approved=true`; plain name otherwise.
+- `*Also approved:*` lists participants with `role="PARTICIPANT"` and `approved=true`. Omitted when no such participants exist.
+- `*Ticket:*` is shown only when the PR description contains a `https://app.clickup.com/t/…` URL. The first match is used.
+- `PullRequest.Participants` (parsed from the `participants` array in both webhook payloads and Bitbucket API responses) drives the approval markers.
 
 ### Opening Message Updates
 
 The opening message is a live document — it is edited (via `chat.update`) to stay in sync with PR state changes:
 
 - `pullrequest:updated` — if the title or reviewer list changed, update the opening message in place
+- `pullrequest:approved` / `pullrequest:unapproved` — after posting the thread reply, fetch the full PR from the Bitbucket API (`GET /repositories/{workspace}/{repo}/pullrequests/{id}`) and re-render the opening message to reflect current approval state. Fetching from the API is required because the webhook payload only contains the single approval actor, not the full participant list.
+- `pullrequest:fulfilled` / `pullrequest:rejected` — after posting the thread reply, fetch the full PR and call `chat.update` to flip `*Status:*` to `Merged` or `Closed`.
 - **Adding a reviewer** — edit the message to add their @mention; Slack will automatically notify them (no separate notification needed)
 - **Removing a reviewer** — edit the message to remove their @mention; Slack will not notify them of the removal. If they have not yet engaged with the thread (no reply, no click-through), they will stop receiving future thread notifications. If they have already engaged, Slack marks them as a thread follower and they will continue to receive updates regardless — this is a known Slack limitation.
 
@@ -159,6 +175,8 @@ Comment reply formatting is controlled by `Config.FormatOptions` (`FormatOptions
 7. Event-specific behavior:
    - `pullrequest:created` — the opening message IS the notification; no separate reply is posted
    - `pullrequest:updated` — edit the opening message via `chat.update`; no reply posted
+   - `pullrequest:approved` / `pullrequest:unapproved` — post a threaded reply, then fetch the full PR from Bitbucket and call `chat.update` to refresh the opening message with current approval state
+   - `pullrequest:fulfilled` / `pullrequest:rejected` — post a threaded reply, then call `chat.update` to update `*Status:*` to `Merged` or `Closed`
    - All other PR and commit_status events — post as a threaded reply using `thread_ts`
    - Pipeline events — see "Pipeline Events" below
 

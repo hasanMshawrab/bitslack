@@ -44,20 +44,24 @@ Title changed to `"Add feature X (updated)"` and a second reviewer (Alice) added
 Bob's participant entry has `"approved": true` and `"state": "approved"`. Use this to test:
 - Approval event is posted as a thread reply, not a new top-level message
 - The actor and the approving user are the same person (Bob)
+- After the reply, the handler fetches the full PR and calls `chat.update` to refresh the opening message with current approval state (Bob's reviewer entry should show ✅)
 
 ### `pullrequest/unapproved.json`
 Bob's participant entry reverts to `"approved": false` and `"state": null`. Use this to test:
 - Unapproval is posted as a thread reply
+- After the reply, the handler fetches the full PR and calls `chat.update` to remove Bob's ✅ from the opening message
 - Structurally identical to `approved.json` except for the participant state — both share the same `approval` wrapper field
 
 ### `pullrequest/fulfilled.json`
 PR state is `"MERGED"`. Includes `merge_commit` (`764413d85e29`) and `closed_by` (Jane). Use this to test:
 - Merge event is posted as a thread reply
+- After the reply, the handler fetches the full PR and calls `chat.update` to set `*Status:*` to `Merged`
 - `close_source_branch: true` is set — relevant if the message surface area includes branch cleanup info
 
 ### `pullrequest/rejected.json`
 PR state is `"DECLINED"`. Includes a `reason` field and `closed_by` (Bob). Use this to test:
 - Decline event is posted as a thread reply
+- After the reply, the handler fetches the full PR and calls `chat.update` to set `*Status:*` to `Closed`
 - `reason` is present — it should be surfaced in the Slack message if non-empty
 - The actor is a reviewer, not the author (Bob declined Jane's PR)
 

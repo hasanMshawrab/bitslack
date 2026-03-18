@@ -122,21 +122,29 @@ type wireCommentLinks struct {
 	HTML wireHref `json:"html"`
 }
 
+type wireParticipant struct {
+	User     wireUser `json:"user"`
+	Role     string   `json:"role"`
+	Approved bool     `json:"approved"`
+}
+
 type wirePR struct {
-	ID                int          `json:"id"`
-	Title             string       `json:"title"`
-	State             string       `json:"state"`
-	Reason            string       `json:"reason"`
-	Author            wireUser     `json:"author"`
-	Source            wireEndpoint `json:"source"`
-	Destination       wireEndpoint `json:"destination"`
-	Reviewers         []wireUser   `json:"reviewers"`
-	MergeCommit       *wireCommit  `json:"merge_commit"`
-	ClosedBy          *wireUser    `json:"closed_by"`
-	CloseSourceBranch bool         `json:"close_source_branch"`
-	CreatedOn         string       `json:"created_on"`
-	UpdatedOn         string       `json:"updated_on"`
-	Links             wirePRLinks  `json:"links"`
+	ID                int               `json:"id"`
+	Title             string            `json:"title"`
+	Description       string            `json:"description"`
+	State             string            `json:"state"`
+	Reason            string            `json:"reason"`
+	Author            wireUser          `json:"author"`
+	Source            wireEndpoint      `json:"source"`
+	Destination       wireEndpoint      `json:"destination"`
+	Reviewers         []wireUser        `json:"reviewers"`
+	Participants      []wireParticipant `json:"participants"`
+	MergeCommit       *wireCommit       `json:"merge_commit"`
+	ClosedBy          *wireUser         `json:"closed_by"`
+	CloseSourceBranch bool              `json:"close_source_branch"`
+	CreatedOn         string            `json:"created_on"`
+	UpdatedOn         string            `json:"updated_on"`
+	Links             wirePRLinks       `json:"links"`
 }
 
 type wirePRLinks struct {
@@ -209,14 +217,26 @@ func parsePullRequestEvent(eventKey string, payload []byte) (*Event, error) {
 		return nil, fmt.Errorf("parsing pull request event: %w", err)
 	}
 
+	participants := make([]Participant, len(w.PullRequest.Participants))
+	for i, p := range w.PullRequest.Participants {
+		participants[i] = Participant{
+			AccountID: p.User.AccountID,
+			Nickname:  p.User.Nickname,
+			Role:      p.Role,
+			Approved:  p.Approved,
+		}
+	}
+
 	pr := PullRequest{
 		ID:                w.PullRequest.ID,
 		Title:             w.PullRequest.Title,
+		Description:       w.PullRequest.Description,
 		State:             w.PullRequest.State,
 		Author:            mapUser(w.PullRequest.Author),
 		Source:            mapEndpoint(w.PullRequest.Source),
 		Destination:       mapEndpoint(w.PullRequest.Destination),
 		Reviewers:         mapUsers(w.PullRequest.Reviewers),
+		Participants:      participants,
 		Reason:            w.PullRequest.Reason,
 		CloseSourceBranch: w.PullRequest.CloseSourceBranch,
 		CreatedOn:         w.PullRequest.CreatedOn,
