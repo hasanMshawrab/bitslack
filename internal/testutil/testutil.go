@@ -105,3 +105,30 @@ func (m *MockLogger) Error(msg string) {
 	defer m.mu.Unlock()
 	m.ErrorMsgs = append(m.ErrorMsgs, msg)
 }
+
+// GetInfoMsgs returns a snapshot of info messages. Safe for concurrent use.
+func (m *MockLogger) GetInfoMsgs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, len(m.InfoMsgs))
+	copy(out, m.InfoMsgs)
+	return out
+}
+
+// GetWarnMsgs returns a snapshot of warn messages. Safe for concurrent use.
+func (m *MockLogger) GetWarnMsgs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, len(m.WarnMsgs))
+	copy(out, m.WarnMsgs)
+	return out
+}
+
+// GetErrorMsgs returns a snapshot of error messages. Safe for concurrent use.
+func (m *MockLogger) GetErrorMsgs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, len(m.ErrorMsgs))
+	copy(out, m.ErrorMsgs)
+	return out
+}

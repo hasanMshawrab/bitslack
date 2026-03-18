@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hasanMshawrab/bitslack/internal/bitbucket"
 	"github.com/hasanMshawrab/bitslack/internal/event"
@@ -216,6 +218,8 @@ func (c *Client) handleCommitStatusEvent(ctx context.Context, ev *event.Event) e
 
 // handlePipelineEvent processes pipeline:span_created webhook events.
 // Only bbc.pipeline_run spans are handled; other span types produce a nil Pipeline field and are no-ops.
+// Returns immediately after scheduling the actual work behind a debounce timer to de-duplicate
+// retried webhook deliveries for the same pipeline run.
 func (c *Client) handlePipelineEvent(ctx context.Context, ev *event.Event) error {
 	run := ev.Pipeline.PipelineRun
 
@@ -228,32 +232,103 @@ func (c *Client) handlePipelineEvent(ctx context.Context, ev *event.Event) error
 			return nil
 		}
 		ev.Pipeline.PipelineRun.Repository = *repo
-		run = ev.Pipeline.PipelineRun
 	}
 
+	uuid := ev.Pipeline.PipelineRun.UUID
+
+	// Debounce: first delivery for this UUID wins; duplicates within the window are dropped.
+	c.pipelineDebounceMu.Lock()
+	if _, inFlight := c.pipelineDebounce[uuid]; inFlight {
+		c.pipelineDebounceMu.Unlock()
+		return nil
+	}
+	c.pipelineDebounce[uuid] = struct{}{}
+	c.pipelineDebounceMu.Unlock()
+
+	time.AfterFunc(c.pipelineDebounceDelay, func() { c.processPipelineRun(ev) })
+	return nil
+}
+
+// processPipelineRun is called by the debounce timer. It fetches step details,
+// applies suppression logic, formats the message, and posts to Slack.
+func (c *Client) processPipelineRun(ev *event.Event) {
+	run := ev.Pipeline.PipelineRun
+
+	// Remove debounce entry when done.
+	defer func() {
+		c.pipelineDebounceMu.Lock()
+		delete(c.pipelineDebounce, run.UUID)
+		c.pipelineDebounceMu.Unlock()
+	}()
+
+	ctx := context.Background()
+	workspace := run.Repository.Workspace.Slug
+	repoSlug := run.Repository.Name
 	repoFullName := run.Repository.FullName
+
+	// Fetch per-step details from the Bitbucket API.
+	steps, err := c.bbClient.GetPipelineSteps(ctx, workspace, repoSlug, run.UUID)
+	if err != nil {
+		c.logger.Error(fmt.Sprintf("bitslack: get pipeline steps for %s pipeline %s: %v",
+			repoFullName, run.UUID, err))
+		// Continue with no step data — header-only message will be posted.
+	} else {
+		for i := range steps {
+			steps[i].URL = buildStepURL(run.AccountUUID, run.RepoUUID, run.UUID, steps[i].UUID)
+		}
+		ev.Pipeline.Steps = steps
+	}
+
+	// Apply manual-stop suppression before posting.
+	if c.skipManuallyStoppedPipelines && run.Trigger == "MANUAL" && allStepsStopped(steps) {
+		c.logger.Info(fmt.Sprintf("bitslack: suppressing manually stopped pipeline %s", run.UUID))
+		return
+	}
 
 	channel, ok := c.configStore.GetChannel(repoFullName)
 	if !ok {
 		c.logger.Warn(fmt.Sprintf("bitslack: no channel mapping for repo %q", repoFullName))
-		return nil
+		return
 	}
 
 	replyText, fmtErr := format.Reply(ev, userResolver(c.configStore), c.formatOpts)
 	if fmtErr != nil {
 		c.logger.Error(fmt.Sprintf("bitslack: format pipeline reply for %s: %v", repoFullName, fmtErr))
-		return nil
+		return
 	}
 
 	if run.RefType == "BRANCH" && c.postPipelineToLinkedPR(ctx, run, channel, replyText) {
-		return nil
+		return
 	}
 
 	// No linked PR (no open PR for branch, or TAG target): post standalone top-level message.
-	if _, err := c.slackClient.PostMessage(ctx, channel, "", replyText, nil); err != nil {
-		c.logger.Error(fmt.Sprintf("bitslack: post standalone pipeline message for %s: %v", repoFullName, err))
+	if _, postErr := c.slackClient.PostMessage(ctx, channel, "", replyText, nil); postErr != nil {
+		c.logger.Error(fmt.Sprintf("bitslack: post standalone pipeline message for %s: %v", repoFullName, postErr))
 	}
-	return nil
+}
+
+// allStepsStopped returns true if steps is non-empty and every step has Result == "STOPPED".
+func allStepsStopped(steps []event.PipelineStep) bool {
+	if len(steps) == 0 {
+		return false
+	}
+	for _, s := range steps {
+		if s.Result != "STOPPED" {
+			return false
+		}
+	}
+	return true
+}
+
+// buildStepURL constructs the Bitbucket UI URL for a specific pipeline step log.
+func buildStepURL(accountUUID, repoUUID, pipelineRunUUID, stepUUID string) string {
+	return fmt.Sprintf("https://bitbucket.org/%s/%s/pipelines/results/%s/runs/%s/steps/%s",
+		url.PathEscape(accountUUID),
+		url.PathEscape(repoUUID),
+		url.PathEscape(pipelineRunUUID),
+		url.PathEscape(pipelineRunUUID),
+		url.PathEscape(stepUUID),
+	)
 }
 
 // postPipelineToLinkedPR finds an open PR for the pipeline's branch and posts the reply to its thread.

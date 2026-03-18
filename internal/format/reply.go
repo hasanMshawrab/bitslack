@@ -11,8 +11,19 @@ import (
 const (
 	stateSuccessful = "SUCCESSFUL"
 	stateFailed     = "FAILED"
+	stateError      = "ERROR"
+	stateStopped    = "STOPPED"
 
 	defaultCommentSummaryLength = 200
+	secondsPerMinute            = 60
+
+	emojiCheck  = "✅"
+	emojiCross  = "❌"
+	emojiRed    = "🔴"
+	emojiStop   = "⏹"
+	emojiStopHD = "🛑"
+	emojiSkip   = "⏭"
+	emojiSpin   = "🔄"
 )
 
 // CommentDisplay controls how much of a comment's body is shown in Slack.
@@ -170,9 +181,40 @@ func commitStatusEmoji(state string) string {
 
 func formatPipelineRun(ev *event.PipelineRunEvent) string {
 	run := ev.PipelineRun
-	emoji := pipelineResultEmoji(run.Result)
-	return fmt.Sprintf("%s *[%s] Pipeline <%s|#%d>* • %s • %s",
-		emoji, run.Repository.Name, run.URL, run.RunNumber, run.RefName, pipelineTriggerLabel(run.Trigger))
+
+	overallEmoji := pipelineResultEmoji(run.Result)
+	overallText := pipelineResultText(run.Result)
+	resultPart := overallEmoji
+	if overallText != "" {
+		resultPart = overallEmoji + " " + overallText
+	}
+
+	header := fmt.Sprintf("⚙️ *[%s] Pipeline <%s|#%d>* • %s • %s — %s",
+		run.Repository.Name, run.URL, run.RunNumber, run.RefName,
+		pipelineTriggerLabel(run.Trigger), resultPart)
+	if d := formatDuration(run.DurationSecs); d != "" {
+		header += " • " + d
+	}
+
+	if len(ev.Steps) == 0 {
+		return header
+	}
+
+	var sb strings.Builder
+	sb.WriteString(header)
+	for _, step := range ev.Steps {
+		emoji := stepResultEmoji(step.Result)
+		stepDuration := ""
+		if d := formatDuration(step.DurationSecs); d != "" {
+			stepDuration = " • " + d
+		}
+		if stepNeedsLink(step.Result) && step.URL != "" {
+			sb.WriteString(fmt.Sprintf("\n    %s <%s|%s>%s", emoji, step.URL, step.Name, stepDuration))
+		} else {
+			sb.WriteString(fmt.Sprintf("\n    %s %s%s", emoji, step.Name, stepDuration))
+		}
+	}
+	return sb.String()
 }
 
 func pipelineTriggerLabel(trigger string) string {
@@ -191,16 +233,63 @@ func pipelineTriggerLabel(trigger string) string {
 func pipelineResultEmoji(result string) string {
 	switch result {
 	case "COMPLETE", stateSuccessful: // OTel uses COMPLETE; REST API uses SUCCESSFUL
-		return "✅"
+		return emojiCheck
 	case stateFailed:
-		return "❌"
-	case "ERROR":
-		return "🔴"
-	case "STOPPED":
-		return "⏹"
+		return emojiCross
+	case stateError:
+		return emojiRed
+	case stateStopped:
+		return emojiStop
 	default:
-		return "🔄"
+		return emojiSpin
 	}
+}
+
+func pipelineResultText(result string) string {
+	switch result {
+	case "COMPLETE", stateSuccessful:
+		return "Passed"
+	case stateFailed:
+		return "Failed"
+	case stateError:
+		return "Error"
+	case stateStopped:
+		return "Stopped"
+	default:
+		return ""
+	}
+}
+
+func stepResultEmoji(result string) string {
+	switch result {
+	case stateSuccessful:
+		return emojiCheck
+	case stateFailed:
+		return emojiCross
+	case stateError:
+		return emojiRed
+	case stateStopped:
+		return emojiStopHD
+	case "NOT_RUN":
+		return emojiSkip
+	default:
+		return "❓"
+	}
+}
+
+// stepNeedsLink returns true for results that warrant linking to the step log.
+func stepNeedsLink(result string) bool {
+	return result == stateFailed || result == stateError
+}
+
+func formatDuration(secs int) string {
+	if secs <= 0 {
+		return ""
+	}
+	if secs < secondsPerMinute {
+		return fmt.Sprintf("%ds", secs)
+	}
+	return fmt.Sprintf("%dm %ds", secs/secondsPerMinute, secs%secondsPerMinute)
 }
 
 func stateToText(state string) string {

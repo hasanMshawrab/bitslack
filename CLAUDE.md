@@ -191,11 +191,23 @@ The `account.uuid` is used as the workspace identifier (Bitbucket accepts UUIDs 
 
 **Run URL:** The `pipeline_run.url` span attribute is used directly as the link in the Slack message.
 
-**Message format:** Pipeline results are formatted as:
+**Duration:** Computed from OTel `startTimeUnixNano` and `endTimeUnixNano` string fields on the span. Formatted as `Xs` for runs under a minute, `Xm Ys` for longer runs.
+
+**Message format:** Pipeline results are formatted as a header line followed by indented per-step lines:
 ```
-{emoji} *[{repo}] Pipeline <{url}|#{run}>* • {branch} • {trigger label}
+⚙️ *[{repo}] Pipeline <{url}|#{run}>* • {branch} • {trigger label} — {emoji} {result text} • {duration}
+    {step emoji} {step name or <url|step name>} • {step duration}
+    ...
 ```
 Trigger labels: `PUSH` → `automatic trigger`, `MANUAL` → `manual trigger`, `SCHEDULE` → `scheduled trigger`, anything else → lowercased + ` trigger`.
+
+Result text: `COMPLETE` → `Passed`, `FAILED` → `Failed`, `ERROR` → `Error`, `STOPPED` → `Stopped`.
+
+**Step breakdown:** After the debounce delay, the handler calls `GET /repositories/{workspace}/{repo}/pipelines/{uuid}/steps/` to fetch step details. Each step is rendered on its own line below the header. Step result emojis: `✅` SUCCESSFUL, `❌` FAILED, `🔴` ERROR, `🛑` STOPPED, `⏭` NOT_RUN. Failed and errored steps are hyperlinked to the Bitbucket UI; other steps show a plain name.
+
+**Debounce:** `Handler` returns nil immediately. The first delivery of a `pipeline_run.uuid` schedules `processPipelineRun` via `time.AfterFunc` after `Config.PipelineDebounce` (default 3 s). A `sync.Mutex`-protected `map[string]struct{}` tracks in-flight UUIDs — subsequent deliveries of the same UUID are silently dropped until the goroutine cleans up. The goroutine uses `context.Background()` because the HTTP request context has expired by the time the timer fires.
+
+**Manual-stop suppression:** If `FormatOptions.SkipManuallyStoppedPipelines` is `true` and all steps are `STOPPED` and the trigger is `MANUAL`, no Slack message is posted. Default `false` — all pipeline results are posted.
 
 PR linkage for pipeline events:
 - If `pipeline.target.ref_type = BRANCH`: call the Bitbucket API to find the open PR for that branch:

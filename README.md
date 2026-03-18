@@ -134,13 +134,18 @@ bitslack.Config{
         bitslack.EventFamilyPipeline, // opt-in; omit EventFamilyCommitStatus to avoid duplicates
     },
 
-    // Controls how PR comment bodies are rendered in Slack.
+    // Controls how PR comment bodies and pipeline messages are rendered in Slack.
     FormatOptions: bitslack.FormatOptions{
-        CommentContent:            bitslack.CommentDisplaySummary, // Full (default), Summary, or None
-        CommentSummaryLength:      200,                            // max display chars in summary mode
-        ShowCommentLink:           true,                           // append "<url|View comment>"
-        DistinguishCommentReplies: true,                           // label replies differently from top-level comments
+        CommentContent:               bitslack.CommentDisplaySummary, // Full (default), Summary, or None
+        CommentSummaryLength:         200,                            // max display chars in summary mode
+        ShowCommentLink:              true,                           // append "<url|View comment>"
+        DistinguishCommentReplies:    true,                           // label replies differently from top-level comments
+        SkipManuallyStoppedPipelines: true,                          // suppress messages when all steps stopped + trigger=MANUAL
     },
+
+    // How long to wait after receiving a pipeline_run span before fetching step details.
+    // De-duplicates retried webhook deliveries. Defaults to 3s.
+    PipelineDebounce: 3 * time.Second,
 }
 ```
 
