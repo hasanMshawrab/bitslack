@@ -65,8 +65,6 @@ func (c *Client) Handler(ctx context.Context, eventKey string, payload []byte) e
 
 // handlePullRequestEvent processes any pullrequest:* webhook event.
 func (c *Client) handlePullRequestEvent(ctx context.Context, ev *event.Event) error {
-	var err error
-
 	pre := ev.PullRequest
 	repoFullName := pre.Repository.FullName
 	workspace := pre.Repository.Workspace.Slug
@@ -144,7 +142,34 @@ func (c *Client) handlePullRequestEvent(ctx context.Context, ev *event.Event) er
 		return nil
 	}
 
+	// Approved/unapproved: also update the opening message to reflect live approval status.
+	if isApprovalEvent(ev.Key) {
+		c.refreshOpeningMessage(ctx, workspace, repoSlug, repoFullName, prID, prKey, channel, ts, resolve)
+	}
+
 	return nil
+}
+
+// refreshOpeningMessage fetches the latest PR state from Bitbucket and updates the opening message
+// in Slack to reflect current approval status.
+func (c *Client) refreshOpeningMessage(
+	ctx context.Context,
+	workspace, repoSlug, repoFullName string,
+	prID int,
+	prKey, channel, ts string,
+	resolve format.UserResolver,
+) {
+	fullPR, fetchErr := c.bbClient.GetPullRequest(ctx, workspace, repoSlug, prID)
+	if fetchErr != nil {
+		c.logger.Error(
+			fmt.Sprintf("bitslack: fetch PR for approval update %s#%d: %v", repoFullName, prID, fetchErr),
+		)
+		return
+	}
+	text, blocks := format.OpeningMessage(fullPR, resolve)
+	if updateErr := c.slackClient.UpdateMessage(ctx, channel, ts, text, blocks); updateErr != nil {
+		c.logger.Error(fmt.Sprintf("bitslack: update opening message on approval for %s: %v", prKey, updateErr))
+	}
 }
 
 // handleCommitStatusEvent processes repo:commit_status_* webhook events.
@@ -382,6 +407,11 @@ func (c *Client) postPipelineToLinkedPR(
 		c.logger.Error(fmt.Sprintf("bitslack: post pipeline reply for %s: %v", prKey, err))
 	}
 	return true
+}
+
+// isApprovalEvent returns true for pullrequest:approved and pullrequest:unapproved events.
+func isApprovalEvent(key string) bool {
+	return key == event.KeyPRApproved || key == event.KeyPRUnapproved
 }
 
 // buildPRKey constructs the thread store key for a PR.

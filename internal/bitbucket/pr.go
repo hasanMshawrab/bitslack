@@ -49,21 +49,29 @@ type prLinksRef struct {
 	HTML hrefRef `json:"html"`
 }
 
+type participantRef struct {
+	User     userRef `json:"user"`
+	Role     string  `json:"role"`
+	Approved bool    `json:"approved"`
+}
+
 type prResponse struct {
-	ID                int         `json:"id"`
-	Title             string      `json:"title"`
-	State             string      `json:"state"`
-	Author            userRef     `json:"author"`
-	Source            endpointRef `json:"source"`
-	Destination       endpointRef `json:"destination"`
-	Reviewers         []userRef   `json:"reviewers"`
-	Reason            string      `json:"reason"`
-	MergeCommit       *commitRef  `json:"merge_commit"`
-	ClosedBy          *userRef    `json:"closed_by"`
-	Links             prLinksRef  `json:"links"`
-	CreatedOn         string      `json:"created_on"`
-	UpdatedOn         string      `json:"updated_on"`
-	CloseSourceBranch bool        `json:"close_source_branch"`
+	ID                int              `json:"id"`
+	Title             string           `json:"title"`
+	Description       string           `json:"description"`
+	State             string           `json:"state"`
+	Author            userRef          `json:"author"`
+	Source            endpointRef      `json:"source"`
+	Destination       endpointRef      `json:"destination"`
+	Reviewers         []userRef        `json:"reviewers"`
+	Participants      []participantRef `json:"participants"`
+	Reason            string           `json:"reason"`
+	MergeCommit       *commitRef       `json:"merge_commit"`
+	ClosedBy          *userRef         `json:"closed_by"`
+	Links             prLinksRef       `json:"links"`
+	CreatedOn         string           `json:"created_on"`
+	UpdatedOn         string           `json:"updated_on"`
+	CloseSourceBranch bool             `json:"close_source_branch"`
 }
 
 type prListResponse struct {
@@ -118,9 +126,10 @@ func (c *Client) GetOpenPRForBranch(ctx context.Context, workspace, repo, branch
 // toPullRequest maps a Bitbucket API response to the canonical event.PullRequest type.
 func toPullRequest(r prResponse) *event.PullRequest {
 	pr := &event.PullRequest{
-		ID:    r.ID,
-		Title: r.Title,
-		State: r.State,
+		ID:          r.ID,
+		Title:       r.Title,
+		Description: r.Description,
+		State:       r.State,
 		Author: event.User{
 			Nickname:    r.Author.Nickname,
 			DisplayName: r.Author.DisplayName,
@@ -151,6 +160,16 @@ func toPullRequest(r prResponse) *event.PullRequest {
 			DisplayName: rev.DisplayName,
 			UUID:        rev.UUID,
 			AccountID:   rev.AccountID,
+		}
+	}
+
+	pr.Participants = make([]event.Participant, len(r.Participants))
+	for i, p := range r.Participants {
+		pr.Participants[i] = event.Participant{
+			AccountID: p.User.AccountID,
+			Nickname:  p.User.Nickname,
+			Role:      p.Role,
+			Approved:  p.Approved,
 		}
 	}
 

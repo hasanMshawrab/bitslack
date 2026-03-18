@@ -81,16 +81,26 @@ type Approval struct {
 	User User
 }
 
+// Participant represents a PR participant (reviewer, author, or observer).
+type Participant struct {
+	AccountID string
+	Nickname  string
+	Role      string // "REVIEWER", "AUTHOR", "PARTICIPANT"
+	Approved  bool
+}
+
 // PullRequest is the canonical PR type used across the library.
 // Also returned by the Bitbucket API client.
 type PullRequest struct {
 	ID                int
 	Title             string
+	Description       string
 	State             string // "OPEN", "MERGED", "DECLINED"
 	Author            User
 	Source            Endpoint
 	Destination       Endpoint
 	Reviewers         []User
+	Participants      []Participant
 	Reason            string  // non-empty only on rejected
 	MergeCommit       *Commit // non-nil only on fulfilled
 	ClosedBy          *User   // non-nil on fulfilled and rejected

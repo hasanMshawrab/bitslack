@@ -442,20 +442,54 @@ func TestHandler_PullRequestApproved_ExistingThread(t *testing.T) {
 		t.Fatalf("Handler returned error: %v", err)
 	}
 
+	// approved: 1 postMessage (reply) + 1 chat.update (opening message refresh)
 	calls := h.getSlackCalls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 Slack call, got %d", len(calls))
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 Slack calls (reply + opening update), got %d: %+v", len(calls), calls)
 	}
 	if calls[0].Path != "/chat.postMessage" {
-		t.Errorf("expected /chat.postMessage, got %s", calls[0].Path)
+		t.Errorf("call 0: expected /chat.postMessage, got %s", calls[0].Path)
 	}
-	// Should be posted as a reply with thread_ts
+	// Reply should be posted with thread_ts
 	if ts, _ := calls[0].Body["thread_ts"].(string); ts != "9999.0000" {
 		t.Errorf("expected thread_ts=9999.0000, got %v", calls[0].Body["thread_ts"])
 	}
 	// Text should mention approval
 	if text, _ := calls[0].Body["text"].(string); !strings.Contains(text, "approved") {
 		t.Errorf("expected reply to contain 'approved', got %q", text)
+	}
+	// Second call: chat.update on opening message
+	if calls[1].Path != "/chat.update" {
+		t.Errorf("call 1: expected /chat.update, got %s", calls[1].Path)
+	}
+	if ts, _ := calls[1].Body["ts"].(string); ts != "9999.0000" {
+		t.Errorf("expected ts=9999.0000 in chat.update, got %v", calls[1].Body["ts"])
+	}
+}
+
+func TestHandler_PullRequestUnapproved_ExistingThread(t *testing.T) {
+	h := newHarness(t)
+	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
+	payload := loadFixture(t, "testdata/webhooks/pullrequest/unapproved.json")
+
+	err := h.Client.Handler(context.Background(), "pullrequest:unapproved", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+
+	// unapproved: 1 postMessage (reply) + 1 chat.update (opening message refresh)
+	calls := h.getSlackCalls()
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 Slack calls (reply + opening update), got %d: %+v", len(calls), calls)
+	}
+	if calls[0].Path != "/chat.postMessage" {
+		t.Errorf("call 0: expected /chat.postMessage, got %s", calls[0].Path)
+	}
+	if text, _ := calls[0].Body["text"].(string); !strings.Contains(text, "removed") {
+		t.Errorf("expected reply to contain 'removed', got %q", text)
+	}
+	if calls[1].Path != "/chat.update" {
+		t.Errorf("call 1: expected /chat.update, got %s", calls[1].Path)
 	}
 }
 
@@ -693,9 +727,10 @@ func TestHandler_CommitStatusFailed(t *testing.T) {
 
 func TestHandler_Backfill_PREvent(t *testing.T) {
 	h := newHarness(t)
-	// Approved event with empty ThreadStore — triggers backfill
+	// Approved event with empty ThreadStore — triggers backfill, then reply, then chat.update
 	h.pushSlackResponse(`{"ok":true,"ts":"8888.0000"}`) // opening
 	h.pushSlackResponse(`{"ok":true,"ts":"8888.0001"}`) // reply
+	// chat.update falls back to default response
 
 	payload := loadFixture(t, "testdata/webhooks/pullrequest/approved.json")
 
@@ -704,9 +739,11 @@ func TestHandler_Backfill_PREvent(t *testing.T) {
 		t.Fatalf("Handler returned error: %v", err)
 	}
 
+	// backfill (approved with no existing thread):
+	// 1) postMessage (opening) 2) postMessage (reply) 3) chat.update (approval refresh)
 	calls := h.getSlackCalls()
-	if len(calls) != 2 {
-		t.Fatalf("expected 2 Slack calls (opening + reply), got %d: %+v", len(calls), calls)
+	if len(calls) != 3 {
+		t.Fatalf("expected 3 Slack calls (opening + reply + update), got %d: %+v", len(calls), calls)
 	}
 
 	// First: opening message (postMessage, no thread_ts)
@@ -715,13 +752,23 @@ func TestHandler_Backfill_PREvent(t *testing.T) {
 	}
 
 	// Second: reply (postMessage, with thread_ts)
+	if calls[1].Path != "/chat.postMessage" {
+		t.Errorf("call 1: expected /chat.postMessage, got %s", calls[1].Path)
+	}
 	if ts, _ := calls[1].Body["thread_ts"].(string); ts != "8888.0000" {
 		t.Errorf("expected thread_ts=8888.0000, got %v", calls[1].Body["thread_ts"])
 	}
-
 	text, _ := calls[1].Body["text"].(string)
 	if !strings.Contains(text, "approved") {
 		t.Errorf("expected reply to contain 'approved', got %q", text)
+	}
+
+	// Third: chat.update (opening message refresh with approval state)
+	if calls[2].Path != "/chat.update" {
+		t.Errorf("call 2: expected /chat.update, got %s", calls[2].Path)
+	}
+	if ts, _ := calls[2].Body["ts"].(string); ts != "8888.0000" {
+		t.Errorf("expected ts=8888.0000 in chat.update, got %v", calls[2].Body["ts"])
 	}
 }
 
