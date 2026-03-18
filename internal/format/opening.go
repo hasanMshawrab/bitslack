@@ -67,11 +67,10 @@ func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slac
 		},
 	}
 
-	// Fields section (indented 4 spaces to align visually with header content)
 	var fields []string
-	fields = append(fields, fmt.Sprintf("    *Title:* %s", pr.Title))
-	fields = append(fields, fmt.Sprintf("    *Status:* %s", prStateLabel(pr.State)))
-	fields = append(fields, fmt.Sprintf("    *Author:* %s", mention(pr.Author.AccountID, pr.Author.Nickname, resolve)))
+	fields = append(fields, fmt.Sprintf("*Title:* %s", pr.Title))
+	fields = append(fields, fmt.Sprintf("*Status:* %s", prStateLabel(pr.State)))
+	fields = append(fields, fmt.Sprintf("*Author:* %s", mention(pr.Author.AccountID, pr.Author.Nickname, resolve)))
 
 	// Reviewers with approval checkmarks
 	if len(pr.Reviewers) > 0 {
@@ -85,7 +84,7 @@ func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slac
 				reviewerParts[i] = m
 			}
 		}
-		fields = append(fields, fmt.Sprintf("    *Reviewers:* %s", strings.Join(reviewerParts, " • ")))
+		fields = append(fields, fmt.Sprintf("*Reviewers:* %s", strings.Join(reviewerParts, " • ")))
 	}
 
 	// Also approved: non-reviewer participants who approved
@@ -95,12 +94,12 @@ func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slac
 		for i, p := range alsoApproved {
 			parts[i] = mention(p.AccountID, p.Nickname, resolve)
 		}
-		fields = append(fields, fmt.Sprintf("    *Also approved:* %s", strings.Join(parts, " • ")))
+		fields = append(fields, fmt.Sprintf("*Also approved:* %s", strings.Join(parts, " • ")))
 	}
 
 	// ClickUp ticket link
 	if ticketURL := extractClickUpURL(pr.Description); ticketURL != "" {
-		fields = append(fields, fmt.Sprintf("    *Ticket:* <%s|View Ticket>", ticketURL))
+		fields = append(fields, fmt.Sprintf("*Ticket:* <%s|View Ticket>", ticketURL))
 	}
 
 	fieldsBlock := slack.Block{
