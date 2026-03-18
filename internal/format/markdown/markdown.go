@@ -120,6 +120,32 @@ func tokenize(mrkdwn string) []segment {
 	return segs
 }
 
+// processSeg applies one segment to result, returns updated remaining and whether to stop.
+func processSeg(seg segment, result *strings.Builder, remaining int) (int, bool) {
+	if seg.isLink {
+		if seg.displayLen <= remaining {
+			result.WriteString(seg.raw)
+			return remaining - seg.displayLen, false
+		}
+		return 0, true
+	}
+	if seg.displayLen <= remaining {
+		result.WriteString(seg.raw)
+		return remaining - seg.displayLen, false
+	}
+	// Truncate at last word boundary.
+	runes := []rune(seg.raw)
+	cut := min(remaining, len(runes))
+	for cut > 0 && runes[cut-1] != ' ' {
+		cut--
+	}
+	for cut > 0 && runes[cut-1] == ' ' {
+		cut--
+	}
+	result.WriteString(string(runes[:cut]))
+	return 0, true
+}
+
 // Truncate shortens mrkdwn to at most maxDisplay visible characters,
 // appending "…" if truncated. Links (<url|text>) are treated as atomic
 // tokens whose display length equals len([]rune(text)). Truncation happens
@@ -146,33 +172,10 @@ func Truncate(mrkdwn string, maxDisplay int) string {
 		if remaining <= 0 {
 			break
 		}
-		if seg.isLink {
-			if seg.displayLen <= remaining {
-				result.WriteString(seg.raw)
-				remaining -= seg.displayLen
-			} else {
-				break
-			}
-		} else {
-			if seg.displayLen <= remaining {
-				result.WriteString(seg.raw)
-				remaining -= seg.displayLen
-			} else {
-				runes := []rune(seg.raw)
-				cut := remaining
-				if cut > len(runes) {
-					cut = len(runes)
-				}
-				for cut > 0 && runes[cut-1] != ' ' {
-					cut--
-				}
-				for cut > 0 && runes[cut-1] == ' ' {
-					cut--
-				}
-				result.WriteString(string(runes[:cut]))
-				remaining = 0
-				break
-			}
+		var stop bool
+		remaining, stop = processSeg(seg, &result, remaining)
+		if stop {
+			break
 		}
 	}
 

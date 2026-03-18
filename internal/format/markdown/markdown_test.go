@@ -7,7 +7,7 @@ import (
 	"github.com/hasanMshawrab/bitslack/internal/format/markdown"
 )
 
-func noopResolve(accountID string) string { return "" }
+func noopResolve(_ string) string { return "" }
 
 func TestToSlack_PlainText(t *testing.T) {
 	got := markdown.ToSlack("hello world", noopResolve)
