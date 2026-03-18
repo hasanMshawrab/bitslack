@@ -1,6 +1,12 @@
 # bitslack
 
 [![CI](https://github.com/hasanMshawrab/bitslack/actions/workflows/ci.yml/badge.svg)](https://github.com/hasanMshawrab/bitslack/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/hasanMshawrab/bitslack?style=social)](https://github.com/hasanMshawrab/bitslack/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/hasanMshawrab/bitslack?style=social)](https://github.com/hasanMshawrab/bitslack/network/members)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
+[![Last commit](https://img.shields.io/github/last-commit/hasanMshawrab/bitslack)](https://github.com/hasanMshawrab/bitslack/commits/main)
+[![Latest release](https://img.shields.io/github/v/release/hasanMshawrab/bitslack?style=flat)](https://github.com/hasanMshawrab/bitslack/releases/latest)
 
 A Go library that receives Bitbucket webhook events and forwards them to Slack as **threaded messages** — all events for a given pull request appear as replies under a single opening message.
 
