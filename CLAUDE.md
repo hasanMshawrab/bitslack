@@ -41,6 +41,7 @@ bitslack/
 │   ├── slack/           # Slack API client (chat.postMessage, chat.update)
 │   ├── event/           # Webhook event types, JSON parsing, routing by event key
 │   ├── format/          # Slack message formatting (opening message, reply text)
+│   │   └── markdown/    # Bitbucket markdown → Slack mrkdwn converter + smart truncation
 │   └── testutil/        # Mock adapters: MockThreadStore, MockConfigStore, MockLogger
 │
 ├── examples/
@@ -123,13 +124,15 @@ Comment reply formatting is controlled by `Config.FormatOptions` (`FormatOptions
 
 - **`DistinguishCommentReplies bool`** — when `true`, a comment that has a `parent.id` (i.e. a reply to another comment) is labelled `"replied to a comment"` instead of `"commented"`. Default `false` — both show `"commented"`.
 - **`CommentContent CommentDisplay`** — controls how much of the comment body is shown:
-  - `CommentDisplayFull` (default, 0) — full body shown as a blockquote
-  - `CommentDisplaySummary` — truncated to `CommentSummaryLength` runes with `…` appended
+  - `CommentDisplayFull` (default, 0) — full body shown inline, converted from Bitbucket markdown to Slack mrkdwn
+  - `CommentDisplaySummary` — converted body truncated to `CommentSummaryLength` display characters with `…` appended
   - `CommentDisplayNone` — body omitted entirely
-- **`CommentSummaryLength int`** — max rune count for summary mode. Zero uses the default (200).
+- **`CommentSummaryLength int`** — max display characters for summary mode. Slack mrkdwn link tokens (`<url|text>`) count by the display text length, not the raw token length. Zero uses the default (200).
 - **`ShowCommentLink bool`** — when `true`, appends `<url|View comment>` (Slack mrkdwn). Default `false` — no link.
 
 `Comment.ParentID` (parsed from `comment.parent.id` in the webhook payload) is `0` for top-level comments and non-zero for replies.
+
+**Markdown conversion** (`internal/format/markdown`): comment bodies are converted from Bitbucket CommonMark/extensions to Slack mrkdwn before display. Conversion rules: `**bold**`→`*bold*`, `~~strike~~`→`~strike~`, `[text](url)`→`<url|text>`, `![alt](url)`→`<url|📎 alt>`, `@{account_id}`→`<@slackID>`, headings→`*text*`, unordered list items→`•`, dividers stripped, tables stripped. Ordered lists and inline code pass through unchanged.
 
 ### Core Flow
 
