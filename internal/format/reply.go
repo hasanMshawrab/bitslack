@@ -60,6 +60,11 @@ type Options struct {
 	// false (default) → link omitted
 	// true → appended as "<url|View comment>"
 	ShowCommentLink bool
+
+	// PipelineLinkedToPR indicates the pipeline message is posted as a thread reply
+	// under a PR. When true, the repo name and branch are omitted from the header
+	// because they are already visible in the opening message above.
+	PipelineLinkedToPR bool
 }
 
 // Reply produces a plain-text reply string for the given event.
@@ -80,7 +85,7 @@ func Reply(ev *event.Event, resolve UserResolver, opts Options) (string, error) 
 	case event.KeyCommitStatusCreated, event.KeyCommitStatusUpdated:
 		return formatCommitStatus(ev.CommitStatus), nil
 	case event.KeyPipelineSpanCreated:
-		return formatPipelineRun(ev.Pipeline), nil
+		return formatPipelineRun(ev.Pipeline, opts.PipelineLinkedToPR), nil
 	default:
 		return "", fmt.Errorf("format: unknown event key %q", ev.Key)
 	}
@@ -179,7 +184,7 @@ func commitStatusEmoji(state string) string {
 	}
 }
 
-func formatPipelineRun(ev *event.PipelineRunEvent) string {
+func formatPipelineRun(ev *event.PipelineRunEvent, linked bool) string {
 	run := ev.PipelineRun
 
 	overallEmoji := pipelineResultEmoji(run.Result)
@@ -189,9 +194,16 @@ func formatPipelineRun(ev *event.PipelineRunEvent) string {
 		resultPart = overallEmoji + " " + overallText
 	}
 
-	header := fmt.Sprintf("⚙️ *[%s] Pipeline <%s|#%d>* • %s • %s — %s",
-		run.Repository.Name, run.URL, run.RunNumber, run.RefName,
-		pipelineTriggerLabel(run.Trigger), resultPart)
+	var header string
+	if linked {
+		// Thread reply under a PR: repo and branch are visible in the opening message above.
+		header = fmt.Sprintf("⚙️ *Pipeline <%s|#%d>* • %s — %s",
+			run.URL, run.RunNumber, pipelineTriggerLabel(run.Trigger), resultPart)
+	} else {
+		header = fmt.Sprintf("⚙️ *[%s] Pipeline <%s|#%d>* • %s • %s — %s",
+			run.Repository.Name, run.URL, run.RunNumber, run.RefName,
+			pipelineTriggerLabel(run.Trigger), resultPart)
+	}
 	if d := formatDuration(run.DurationSecs); d != "" {
 		header += " • " + d
 	}

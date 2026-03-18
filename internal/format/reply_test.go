@@ -311,6 +311,30 @@ func TestReply_PipelineComplete(t *testing.T) {
 	assertContains(t, text, "Passed")
 }
 
+func TestReply_PipelineLinkedToPR_OmitsRepoAndBranch(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				Result:  "COMPLETE",
+				RefName: "feature/cool-thing",
+				URL:     "https://example.com/pipelines/1",
+				RunNumber: 7,
+				Repository: event.Repository{Name: "my-repo"},
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{PipelineLinkedToPR: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNotContains(t, text, "my-repo")
+	assertNotContains(t, text, "feature/cool-thing")
+	assertContains(t, text, "#7")
+	assertContains(t, text, "✅")
+	assertContains(t, text, "Passed")
+}
+
 func TestReply_PipelineWithSteps_FailedStepLinked(t *testing.T) {
 	// Failed and error steps should be hyperlinked; successful and not-run steps should not.
 	ev := &event.Event{
