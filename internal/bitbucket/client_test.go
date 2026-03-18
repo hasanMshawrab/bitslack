@@ -287,3 +287,123 @@ func TestGetOpenPRForBranch_ServerError(t *testing.T) {
 		t.Fatal("expected error for 500 response")
 	}
 }
+
+const cannedPipelineStepsJSON = `{
+  "values": [
+    {
+      "uuid": "{step-001}",
+      "name": "Build",
+      "state": {
+        "name": "COMPLETED",
+        "result": {"name": "SUCCESSFUL"}
+      },
+      "duration_in_seconds": 12
+    },
+    {
+      "uuid": "{step-002}",
+      "name": "Test",
+      "state": {
+        "name": "COMPLETED",
+        "result": {"name": "FAILED"}
+      },
+      "duration_in_seconds": 18
+    },
+    {
+      "uuid": "{step-003}",
+      "name": "Deploy",
+      "state": {
+        "name": "NOT_RUN"
+      },
+      "duration_in_seconds": 0
+    }
+  ]
+}`
+
+func TestGetPipelineSteps_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// r.URL.Path is the URL-decoded path; {} are not path-reserved chars in RFC 3986 path segments.
+		const wantPath = "/repositories/myworkspace/my-repo/pipelines/{pipeline-uuid}/steps/"
+		if r.URL.Path != wantPath {
+			t.Errorf("unexpected path: %s, want %s", r.URL.Path, wantPath)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(cannedPipelineStepsJSON))
+	}))
+	defer srv.Close()
+
+	client := bitbucket.NewClient(srv.URL, "test-user", "test-token", bitbucket.WithHTTPClient(srv.Client()))
+	steps, err := client.GetPipelineSteps(context.Background(), "myworkspace", "my-repo", "{pipeline-uuid}")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(steps) != 3 {
+		t.Fatalf("len(steps) = %d, want 3", len(steps))
+	}
+
+	if steps[0].Name != "Build" {
+		t.Errorf("steps[0].Name = %q, want %q", steps[0].Name, "Build")
+	}
+	if steps[0].Result != "SUCCESSFUL" {
+		t.Errorf("steps[0].Result = %q, want SUCCESSFUL", steps[0].Result)
+	}
+	if steps[0].DurationSecs != 12 {
+		t.Errorf("steps[0].DurationSecs = %d, want 12", steps[0].DurationSecs)
+	}
+
+	if steps[1].Name != "Test" {
+		t.Errorf("steps[1].Name = %q, want %q", steps[1].Name, "Test")
+	}
+	if steps[1].Result != "FAILED" {
+		t.Errorf("steps[1].Result = %q, want FAILED", steps[1].Result)
+	}
+
+	// NOT_RUN step: no result in state, falls back to "NOT_RUN".
+	if steps[2].Result != "NOT_RUN" {
+		t.Errorf("steps[2].Result = %q, want NOT_RUN", steps[2].Result)
+	}
+}
+
+func TestGetPipelineSteps_Stopped(t *testing.T) {
+	const stoppedJSON = `{
+		"values": [
+			{
+				"uuid": "{step-001}",
+				"name": "Build",
+				"state": {"name": "STOPPED"},
+				"duration_in_seconds": 5
+			}
+		]
+	}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(stoppedJSON))
+	}))
+	defer srv.Close()
+
+	client := bitbucket.NewClient(srv.URL, "test-user", "test-token", bitbucket.WithHTTPClient(srv.Client()))
+	steps, err := client.GetPipelineSteps(context.Background(), "myworkspace", "my-repo", "{uuid}")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(steps) != 1 {
+		t.Fatalf("len(steps) = %d, want 1", len(steps))
+	}
+	if steps[0].Result != "STOPPED" {
+		t.Errorf("steps[0].Result = %q, want STOPPED", steps[0].Result)
+	}
+}
+
+func TestGetPipelineSteps_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := bitbucket.NewClient(srv.URL, "test-user", "test-token", bitbucket.WithHTTPClient(srv.Client()))
+	_, err := client.GetPipelineSteps(context.Background(), "myworkspace", "my-repo", "{uuid}")
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+}

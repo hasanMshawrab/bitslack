@@ -1,6 +1,7 @@
 package format_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/hasanMshawrab/bitslack/internal/event"
@@ -228,7 +229,10 @@ func TestReply_PipelineSuccessful(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// New format: ⚙️ fixed leading emoji; result shown after "—"
+	assertContains(t, text, "⚙️")
 	assertContains(t, text, "✅")
+	assertContains(t, text, "Passed")
 	const pipelineURL = "https://bitbucket.org/myworkspace/my-repo/pipelines/results/{aa111111}"
 	assertContains(t, text, "*[my-repo] Pipeline <"+pipelineURL+"|#5>*")
 	assertContains(t, text, "feature/add-feature-x")
@@ -253,6 +257,7 @@ func TestReply_PipelineFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertContains(t, text, "❌")
+	assertContains(t, text, "Failed")
 	assertContains(t, text, "#6")
 }
 
@@ -268,6 +273,7 @@ func TestReply_PipelineError(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertContains(t, text, "🔴")
+	assertContains(t, text, "Error")
 }
 
 func TestReply_PipelineStopped(t *testing.T) {
@@ -282,6 +288,147 @@ func TestReply_PipelineStopped(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertContains(t, text, "⏹")
+	assertContains(t, text, "Stopped")
+}
+
+func TestReply_PipelineComplete(t *testing.T) {
+	// OTel result "COMPLETE" maps to ✅ Passed.
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				Result:  "COMPLETE",
+				RefName: "main",
+				URL:     "https://example.com",
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "✅")
+	assertContains(t, text, "Passed")
+}
+
+func TestReply_PipelineWithSteps_FailedStepLinked(t *testing.T) {
+	// Failed and error steps should be hyperlinked; successful and not-run steps should not.
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				Result:  "FAILED",
+				RefName: "main",
+				URL:     "https://example.com/pipeline",
+			},
+			Steps: []event.PipelineStep{
+				{Name: "Lint", Result: "SUCCESSFUL", DurationSecs: 12},
+				{Name: "Test", Result: "FAILED", DurationSecs: 18, URL: "https://example.com/step/2"},
+				{Name: "Deploy", Result: "NOT_RUN"},
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⚙️ header with overall result
+	assertContains(t, text, "⚙️")
+	assertContains(t, text, "❌")
+	assertContains(t, text, "Failed")
+	// Step breakdown
+	assertContains(t, text, "✅ Lint")
+	assertContains(t, text, "• 12s")
+	// Failed step is linked.
+	assertContains(t, text, "<https://example.com/step/2|Test>")
+	assertContains(t, text, "• 18s")
+	// NOT_RUN step shown with ⏭ and no link.
+	assertContains(t, text, "⏭ Deploy")
+}
+
+func TestReply_PipelineWithSteps_ErrorStepLinked(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				Result:  "ERROR",
+				RefName: "main",
+				URL:     "https://example.com/pipeline",
+			},
+			Steps: []event.PipelineStep{
+				{Name: "Build", Result: "ERROR", URL: "https://example.com/step/1"},
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "<https://example.com/step/1|Build>")
+}
+
+func TestReply_PipelineWithSteps_StoppedStepNotLinked(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				Result:  "STOPPED",
+				RefName: "main",
+				URL:     "https://example.com/pipeline",
+			},
+			Steps: []event.PipelineStep{
+				{Name: "Build", Result: "STOPPED", URL: "https://example.com/step/1"},
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "🛑 Build")
+	// Stopped step is NOT linked.
+	assertNotContains(t, text, "<https://example.com/step/1|Build>")
+}
+
+func TestReply_PipelineDuration(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				Result:       "COMPLETE",
+				RefName:      "main",
+				URL:          "https://example.com",
+				DurationSecs: 300, // 5 minutes
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "5m 0s")
+}
+
+func TestReply_PipelineNoDuration(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				Result:       "COMPLETE",
+				RefName:      "main",
+				URL:          "https://example.com",
+				DurationSecs: 0, // no duration
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No duration bullet in the output.
+	if strings.Count(text, "•") != 2 { // only "• branch • trigger"
+		t.Errorf("expected exactly 2 bullets (branch + trigger) with no duration, got: %q", text)
+	}
 }
 
 func TestReply_CommentCreated_ShowLink(t *testing.T) {

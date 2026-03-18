@@ -131,21 +131,34 @@ type CommitStatusEvent struct {
 // PipelineRun holds data for a single Bitbucket Pipelines run,
 // extracted from a bbc.pipeline_run OTel span.
 type PipelineRun struct {
-	UUID        string
-	RunNumber   int
-	Result      string // OTel values: "COMPLETE", "FAILED", "ERROR", "STOPPED"
-	Trigger     string // "PUSH", "MANUAL", "SCHEDULED"
-	RefName     string // branch or tag name
-	RefType     string // "BRANCH" or "TAG"
-	Repository  Repository
-	RepoUUID    string // pipeline.repository.uuid — used to resolve repo when full_name is absent
-	AccountUUID string // pipeline.account.uuid — used to resolve repo when full_name is absent
-	URL         string // link to the pipeline run in Bitbucket UI
+	UUID         string
+	RunNumber    int
+	Result       string // OTel values: "COMPLETE", "FAILED", "ERROR", "STOPPED"
+	Trigger      string // "PUSH", "MANUAL", "SCHEDULED"
+	RefName      string // branch or tag name
+	RefType      string // "BRANCH" or "TAG"
+	Repository   Repository
+	RepoUUID     string // pipeline.repository.uuid — used to resolve repo when full_name is absent
+	AccountUUID  string // pipeline.account.uuid — used to resolve repo when full_name is absent
+	URL          string // link to the pipeline run in Bitbucket UI
+	DurationSecs int    // total run duration computed from OTel span timestamps
+}
+
+// PipelineStep holds data for a single step within a pipeline run,
+// fetched from the Bitbucket Pipelines REST API after the span is received.
+type PipelineStep struct {
+	UUID         string
+	Name         string
+	Result       string // REST API values: "SUCCESSFUL", "FAILED", "ERROR", "STOPPED", "NOT_RUN"
+	DurationSecs int
+	URL          string // link to the step log in Bitbucket UI
 }
 
 // PipelineRunEvent is the parsed form of a pipeline:span_created bbc.pipeline_run span.
+// Steps is populated by the handler after fetching from the Bitbucket API.
 type PipelineRunEvent struct {
 	PipelineRun PipelineRun
+	Steps       []PipelineStep
 }
 
 // Event is a discriminated union of all event families.

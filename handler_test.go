@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hasanMshawrab/bitslack"
 	"github.com/hasanMshawrab/bitslack/internal/testutil"
@@ -46,6 +47,11 @@ type testHarness struct {
 	// openPRListOmitsReviewers makes the /pullrequests?q=... endpoint return a PR without
 	// reviewers, simulating real Bitbucket API list endpoint behaviour.
 	openPRListOmitsReviewers bool
+
+	// pipelineStepsEmpty makes the /pipelines/*/steps/ endpoint return an empty list.
+	pipelineStepsEmpty bool
+	// pipelineStepsFailure makes the /pipelines/*/steps/ endpoint return a 500 error.
+	pipelineStepsFailure bool
 }
 
 func newHarness(t *testing.T) *testHarness {
@@ -78,51 +84,7 @@ func newHarness(t *testing.T) *testHarness {
 	}))
 
 	// Bitbucket mock — routes by URL path
-	h.BBServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-
-		// GET /repositories/{ws}/{repo}/pullrequests/{id}
-		if strings.Contains(path, "/pullrequests/") && !strings.Contains(path, "/commit/") {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, bbPRResponse())
-			return
-		}
-
-		// GET /repositories/{ws}/{repo}/commit/{hash}/pullrequests
-		if strings.Contains(path, "/commit/") && strings.HasSuffix(path, "/pullrequests") {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, bbCommitPRsResponse())
-			return
-		}
-
-		// GET /repositories/{ws}/{repo}/pullrequests?q=source.branch.name=... (open PR for branch)
-		if strings.HasSuffix(path, "/pullrequests") && !strings.Contains(path, "/commit/") {
-			w.Header().Set("Content-Type", "application/json")
-			h.mu.Lock()
-			empty := h.openPRForBranchEmpty
-			omitReviewers := h.openPRListOmitsReviewers
-			h.mu.Unlock()
-			switch {
-			case empty:
-				fmt.Fprint(w, `{"values":[]}`)
-			case omitReviewers:
-				fmt.Fprint(w, bbOpenPRListNoReviewers())
-			default:
-				fmt.Fprint(w, bbCommitPRsResponse())
-			}
-			return
-		}
-
-		// GET /repositories/{ws}/{repo} — standalone repository lookup (no subpath beyond ws/repo)
-		noSubpath := !strings.Contains(path, "/pullrequests") && !strings.Contains(path, "/commit")
-		if strings.HasPrefix(path, "/repositories/") && noSubpath {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, bbRepoResponse())
-			return
-		}
-
-		http.NotFound(w, r)
-	}))
+	h.BBServer = httptest.NewServer(newBBMockHandler(h))
 
 	t.Cleanup(func() {
 		h.SlackServer.Close()
@@ -158,6 +120,85 @@ func (h *testHarness) pushSlackResponse(resp string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.slackResponses = append(h.slackResponses, resp)
+}
+
+// newBBMockHandler returns an [http.Handler] that routes Bitbucket API requests
+// based on the path, using the harness state for conditional responses.
+func newBBMockHandler(h *testHarness) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// GET /repositories/{ws}/{repo}/pullrequests/{id}
+		if strings.Contains(path, "/pullrequests/") && !strings.Contains(path, "/commit/") {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, bbPRResponse())
+			return
+		}
+
+		// GET /repositories/{ws}/{repo}/commit/{hash}/pullrequests
+		if strings.Contains(path, "/commit/") && strings.HasSuffix(path, "/pullrequests") {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, bbCommitPRsResponse())
+			return
+		}
+
+		// GET /repositories/{ws}/{repo}/pullrequests?q=source.branch.name=... (open PR for branch)
+		if strings.HasSuffix(path, "/pullrequests") && !strings.Contains(path, "/commit/") {
+			w.Header().Set("Content-Type", "application/json")
+			serveBBPRForBranch(h, w)
+			return
+		}
+
+		// GET /repositories/{ws}/{repo}/pipelines/{uuid}/steps/
+		if strings.Contains(path, "/pipelines/") && strings.HasSuffix(path, "/steps/") {
+			serveBBPipelineSteps(h, w)
+			return
+		}
+
+		// GET /repositories/{ws}/{repo} — standalone repository lookup
+		noSubpath := !strings.Contains(path, "/pullrequests") &&
+			!strings.Contains(path, "/commit") &&
+			!strings.Contains(path, "/pipelines")
+		if strings.HasPrefix(path, "/repositories/") && noSubpath {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, bbRepoResponse())
+			return
+		}
+
+		http.NotFound(w, r)
+	})
+}
+
+func serveBBPRForBranch(h *testHarness, w http.ResponseWriter) {
+	h.mu.Lock()
+	empty := h.openPRForBranchEmpty
+	omitReviewers := h.openPRListOmitsReviewers
+	h.mu.Unlock()
+	switch {
+	case empty:
+		fmt.Fprint(w, `{"values":[]}`)
+	case omitReviewers:
+		fmt.Fprint(w, bbOpenPRListNoReviewers())
+	default:
+		fmt.Fprint(w, bbCommitPRsResponse())
+	}
+}
+
+func serveBBPipelineSteps(h *testHarness, w http.ResponseWriter) {
+	h.mu.Lock()
+	stepsEmpty := h.pipelineStepsEmpty
+	stepsFailure := h.pipelineStepsFailure
+	h.mu.Unlock()
+	if stepsFailure {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if stepsEmpty {
+		fmt.Fprint(w, `{"values":[]}`)
+		return
+	}
+	fmt.Fprint(w, bbPipelineStepsResponse())
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +276,52 @@ func bbRepoResponse() string {
 		"name": "my-repo",
 		"workspace": {"slug": "myworkspace"},
 		"links": {"html": {"href": "https://bitbucket.org/myworkspace/my-repo"}}
+	}`
+}
+
+// bbPipelineStepsResponse returns a mock Bitbucket pipeline steps API response.
+func bbPipelineStepsResponse() string {
+	return `{
+		"values": [
+			{
+				"uuid": "{step-001-lint}",
+				"name": "Lint",
+				"state": {
+					"name": "COMPLETED",
+					"result": {"name": "SUCCESSFUL"}
+				},
+				"duration_in_seconds": 12
+			},
+			{
+				"uuid": "{step-002-test}",
+				"name": "Test",
+				"state": {
+					"name": "COMPLETED",
+					"result": {"name": "FAILED"}
+				},
+				"duration_in_seconds": 18
+			}
+		]
+	}`
+}
+
+// bbAllStepsStoppedResponse returns a mock steps response where all steps are STOPPED.
+func bbAllStepsStoppedResponse() string {
+	return `{
+		"values": [
+			{
+				"uuid": "{step-001-build}",
+				"name": "Build",
+				"state": {"name": "STOPPED"},
+				"duration_in_seconds": 3
+			},
+			{
+				"uuid": "{step-002-test}",
+				"name": "Test",
+				"state": {"name": "STOPPED"},
+				"duration_in_seconds": 0
+			}
+		]
 	}`
 }
 
@@ -809,6 +896,7 @@ func newPipelineHarness(t *testing.T) *testHarness {
 		ConfigStore:       h.ConfigStore,
 		Logger:            h.Logger,
 		EnabledEvents:     []bitslack.EventFamily{bitslack.EventFamilyPipeline},
+		PipelineDebounce:  1 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("bitslack.New: %v", err)
@@ -816,6 +904,9 @@ func newPipelineHarness(t *testing.T) *testHarness {
 	h.Client = client
 	return h
 }
+
+// waitForPipeline waits for the async pipeline debounce timer to fire and processing to complete.
+func waitForPipeline() { time.Sleep(100 * time.Millisecond) }
 
 func TestHandler_Pipeline_LinkedToPRExistingThread(t *testing.T) {
 	h := newPipelineHarness(t)
@@ -826,6 +917,7 @@ func TestHandler_Pipeline_LinkedToPRExistingThread(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler returned error: %v", err)
 	}
+	waitForPipeline()
 
 	calls := h.getSlackCalls()
 	if len(calls) != 1 {
@@ -854,6 +946,7 @@ func TestHandler_Pipeline_Backfill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler returned error: %v", err)
 	}
+	waitForPipeline()
 
 	calls := h.getSlackCalls()
 	if len(calls) != 2 {
@@ -888,6 +981,7 @@ func TestHandler_Pipeline_Backfill_IncludesReviewers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler returned error: %v", err)
 	}
+	waitForPipeline()
 
 	calls := h.getSlackCalls()
 	if len(calls) < 1 {
@@ -914,6 +1008,7 @@ func TestHandler_Pipeline_StandaloneNoPR(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler returned error: %v", err)
 	}
+	waitForPipeline()
 
 	calls := h.getSlackCalls()
 	if len(calls) != 1 {
@@ -937,6 +1032,203 @@ func TestHandler_Pipeline_StepSpanSkipped(t *testing.T) {
 	calls := h.getSlackCalls()
 	if len(calls) != 0 {
 		t.Errorf("expected 0 Slack calls for step span, got %d", len(calls))
+	}
+}
+
+func TestHandler_Pipeline_StepBreakdownIncluded(t *testing.T) {
+	// Verify that the step breakdown (name, emoji) appears in the pipeline reply.
+	h := newPipelineHarness(t)
+	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
+	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_failed.json")
+
+	err := h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+	waitForPipeline()
+
+	calls := h.getSlackCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 Slack call (reply), got %d", len(calls))
+	}
+	text, _ := calls[0].Body["text"].(string)
+	// Header emoji (fixed) and step-level emojis must both appear.
+	if !strings.Contains(text, "⚙️") {
+		t.Errorf("expected ⚙️ in message, got %q", text)
+	}
+	if !strings.Contains(text, "Lint") {
+		t.Errorf("expected step name 'Lint' in message, got %q", text)
+	}
+	if !strings.Contains(text, "Test") {
+		t.Errorf("expected step name 'Test' in message, got %q", text)
+	}
+	// The failed step (Test) should be hyperlinked.
+	if !strings.Contains(text, "<") || !strings.Contains(text, "Test") {
+		t.Errorf("expected failed step 'Test' to be hyperlinked, got %q", text)
+	}
+}
+
+func TestHandler_Pipeline_StepsAPIFailure_StillPosts(t *testing.T) {
+	// When the steps API returns an error, a header-only message is still posted.
+	h := newPipelineHarness(t)
+	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
+	h.pipelineStepsFailure = true
+	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_failed.json")
+
+	err := h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+	waitForPipeline()
+
+	calls := h.getSlackCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 Slack call (header-only), got %d", len(calls))
+	}
+	text, _ := calls[0].Body["text"].(string)
+	if !strings.Contains(text, "❌") {
+		t.Errorf("expected ❌ in header-only message, got %q", text)
+	}
+	// No step names in header-only message.
+	if strings.Contains(text, "Lint") || strings.Contains(text, "Test") {
+		t.Errorf("header-only message should not contain step names, got %q", text)
+	}
+	// Should have logged an error about the steps API.
+	found := false
+	for _, msg := range h.Logger.ErrorMsgs {
+		if strings.Contains(msg, "pipeline steps") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected error log about pipeline steps, got: %v", h.Logger.ErrorMsgs)
+	}
+}
+
+func TestHandler_Pipeline_DebounceDeduplicate(t *testing.T) {
+	// Two deliveries of the same pipeline_run.uuid within the debounce window:
+	// only one Slack message should be posted.
+	h := newPipelineHarness(t)
+	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
+	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_successful.json")
+
+	_ = h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	_ = h.Client.Handler(context.Background(), "pipeline:span_created", payload) // duplicate
+	waitForPipeline()
+
+	calls := h.getSlackCalls()
+	if len(calls) != 1 {
+		t.Errorf("expected 1 Slack call (debounced duplicate), got %d", len(calls))
+	}
+}
+
+func TestHandler_Pipeline_ManualStopSuppressed(t *testing.T) {
+	// SkipManuallyStoppedPipelines=true and all steps STOPPED + trigger MANUAL → no message.
+	h := newHarness(t)
+	client, err := bitslack.New(bitslack.Config{
+		SlackToken:        "xoxb-test",
+		BitbucketUsername: "bb-user",
+		BitbucketToken:    "bb-test",
+		SlackBaseURL:      h.SlackServer.URL,
+		BitbucketBaseURL:  h.BBServer.URL,
+		ThreadStore:       h.ThreadStore,
+		ConfigStore:       h.ConfigStore,
+		Logger:            h.Logger,
+		EnabledEvents:     []bitslack.EventFamily{bitslack.EventFamilyPipeline},
+		PipelineDebounce:  1 * time.Millisecond,
+		FormatOptions: bitslack.FormatOptions{
+			SkipManuallyStoppedPipelines: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("bitslack.New: %v", err)
+	}
+	h.Client = client
+	// Override steps response to return all-stopped.
+	h.pipelineStepsEmpty = false
+	// Patch: use a custom BB server that returns all-stopped steps.
+	h.BBServer.Close()
+	h.BBServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if strings.Contains(path, "/pipelines/") && strings.HasSuffix(path, "/steps/") {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, bbAllStepsStoppedResponse())
+			return
+		}
+		noSubpath := !strings.Contains(path, "/pullrequests") &&
+			!strings.Contains(path, "/commit") &&
+			!strings.Contains(path, "/pipelines")
+		if strings.HasPrefix(path, "/repositories/") && noSubpath {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, bbRepoResponse())
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	// Re-create client with updated BB URL.
+	client2, err2 := bitslack.New(bitslack.Config{
+		SlackToken:        "xoxb-test",
+		BitbucketUsername: "bb-user",
+		BitbucketToken:    "bb-test",
+		SlackBaseURL:      h.SlackServer.URL,
+		BitbucketBaseURL:  h.BBServer.URL,
+		ThreadStore:       h.ThreadStore,
+		ConfigStore:       h.ConfigStore,
+		Logger:            h.Logger,
+		EnabledEvents:     []bitslack.EventFamily{bitslack.EventFamilyPipeline},
+		PipelineDebounce:  1 * time.Millisecond,
+		FormatOptions: bitslack.FormatOptions{
+			SkipManuallyStoppedPipelines: true,
+		},
+	})
+	if err2 != nil {
+		t.Fatalf("bitslack.New: %v", err2)
+	}
+	h.Client = client2
+	_ = client // silence unused warning
+
+	// span_created_no_pr.json has trigger=MANUAL.
+	h.openPRForBranchEmpty = true
+	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_no_pr.json")
+
+	err = h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+	waitForPipeline()
+
+	calls := h.getSlackCalls()
+	if len(calls) != 0 {
+		t.Errorf("expected 0 Slack calls for suppressed manual stop, got %d: %v", len(calls), calls)
+	}
+	// Should have logged an info about suppression.
+	found := false
+	for _, msg := range h.Logger.InfoMsgs {
+		if strings.Contains(msg, "suppressing") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected info log about suppression, got: %v", h.Logger.InfoMsgs)
+	}
+}
+
+func TestHandler_Pipeline_ManualStopNotSuppressedByDefault(t *testing.T) {
+	// Default (SkipManuallyStoppedPipelines=false): message is posted even for manual stop.
+	// Use the no_pr fixture which has trigger=MANUAL.
+	h := newPipelineHarness(t)
+	h.openPRForBranchEmpty = true
+	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_no_pr.json")
+
+	err := h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+	waitForPipeline()
+
+	calls := h.getSlackCalls()
+	if len(calls) != 1 {
+		t.Errorf("expected 1 Slack call when suppression disabled, got %d", len(calls))
 	}
 }
 

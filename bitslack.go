@@ -23,6 +23,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hasanMshawrab/bitslack/internal/bitbucket"
@@ -30,7 +31,10 @@ import (
 	"github.com/hasanMshawrab/bitslack/internal/slack"
 )
 
-const defaultHTTPTimeout = 10 * time.Second
+const (
+	defaultHTTPTimeout      = 10 * time.Second
+	defaultPipelineDebounce = 3 * time.Second
+)
 
 // CommentDisplay controls how much of a comment's body is shown in Slack.
 type CommentDisplay int
@@ -66,6 +70,12 @@ type FormatOptions struct {
 	// false (default) → link omitted
 	// true → appended as "<url|View comment>"
 	ShowCommentLink bool
+
+	// SkipManuallyStoppedPipelines suppresses Slack notifications for pipeline
+	// runs where all steps were stopped and the trigger was MANUAL.
+	// false (default) → all pipeline results are posted.
+	// true → manually stopped pipelines produce no Slack message.
+	SkipManuallyStoppedPipelines bool
 }
 
 // EventFamily identifies a group of related Bitbucket webhook event keys.
@@ -124,6 +134,12 @@ type Config struct {
 	// FormatOptions controls how Slack reply messages are rendered.
 	// All fields are optional — zero values produce the default behaviour.
 	FormatOptions FormatOptions
+
+	// PipelineDebounce controls how long the handler waits after receiving a
+	// pipeline_run span before fetching step details and posting to Slack.
+	// This de-duplicates retried webhook deliveries for the same pipeline run.
+	// Defaults to 3 seconds. Override in tests to keep them fast.
+	PipelineDebounce time.Duration
 }
 
 // Client is the bitslack engine. Safe for concurrent use.
@@ -135,6 +151,11 @@ type Client struct {
 	slackClient     *slack.Client
 	enabledFamilies map[EventFamily]struct{}
 	formatOpts      format.Options
+
+	skipManuallyStoppedPipelines bool
+	pipelineDebounceDelay        time.Duration
+	pipelineDebounce             map[string]struct{} // pipeline_run.uuid → in-flight
+	pipelineDebounceMu           sync.Mutex
 }
 
 // New validates the config and constructs a Client.
@@ -186,12 +207,22 @@ func New(cfg Config) (*Client, error) {
 		ShowCommentLink:           cfg.FormatOptions.ShowCommentLink,
 	}
 
+	debounceDelay := cfg.PipelineDebounce
+	if debounceDelay <= 0 {
+		debounceDelay = defaultPipelineDebounce
+	}
+
 	return &Client{
 		threadStore:     cfg.ThreadStore,
 		configStore:     cfg.ConfigStore,
 		logger:          cfg.Logger,
 		enabledFamilies: enabledFamilies,
 		formatOpts:      fmtOpts,
+
+		skipManuallyStoppedPipelines: cfg.FormatOptions.SkipManuallyStoppedPipelines,
+		pipelineDebounceDelay:        debounceDelay,
+		pipelineDebounce:             make(map[string]struct{}),
+
 		bbClient: bitbucket.NewClient(
 			cfg.BitbucketBaseURL,
 			cfg.BitbucketUsername,

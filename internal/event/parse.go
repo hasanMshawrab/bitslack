@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+const nanosPerSecond = 1_000_000_000
+
 // CommitHashFromHref extracts the commit hash from a Bitbucket API href URL.
 // Expected format: "https://api.bitbucket.org/2.0/repositories/{workspace}/{repo}/commit/{hash}"
 func CommitHashFromHref(href string) (string, error) {
@@ -280,8 +282,10 @@ type wireOTelAttribute struct {
 }
 
 type wireOTelSpan struct {
-	Name       string              `json:"name"`
-	Attributes []wireOTelAttribute `json:"attributes"`
+	Name              string              `json:"name"`
+	StartTimeUnixNano string              `json:"startTimeUnixNano"`
+	EndTimeUnixNano   string              `json:"endTimeUnixNano"`
+	Attributes        []wireOTelAttribute `json:"attributes"`
 }
 
 type wireOTelScopeSpan struct {
@@ -309,47 +313,60 @@ func parsePipelineSpanEvent(eventKey string, payload []byte) (*Event, error) {
 				if span.Name != "bbc.pipeline_run" {
 					continue
 				}
-				// Build an attribute map for O(1) lookup.
-				attrs := make(map[string]wireOTelValue, len(span.Attributes))
-				for _, a := range span.Attributes {
-					attrs[a.Key] = a.Value
-				}
-
-				fullName := attrs["pipeline.repository.full_name"].StringValue
-				var repo Repository
-				repo.FullName = fullName
-				if workspace, repoSlug, ok := strings.Cut(fullName, "/"); ok {
-					repo.Workspace = Workspace{Slug: workspace}
-					repo.Name = repoSlug
-				}
-
-				runNumber, _ := strconv.Atoi(attrs["pipeline_run.run_number"].StringValue)
-				uuid := attrs["pipeline_run.uuid"].StringValue
-				url := attrs["pipeline_run.url"].StringValue
-
-				return &Event{
-					Key: eventKey,
-					Pipeline: &PipelineRunEvent{
-						PipelineRun: PipelineRun{
-							UUID:        uuid,
-							RunNumber:   runNumber,
-							Result:      attrs["pipeline.state.result.name"].StringValue,
-							Trigger:     attrs["pipeline.trigger.name"].StringValue,
-							RefName:     attrs["pipeline.target.ref_name"].StringValue,
-							RefType:     attrs["pipeline.target.ref_type"].StringValue,
-							Repository:  repo,
-							RepoUUID:    attrs["pipeline.repository.uuid"].StringValue,
-							AccountUUID: attrs["pipeline.account.uuid"].StringValue,
-							URL:         url,
-						},
-					},
-				}, nil
+				return buildPipelineRunEvent(eventKey, span), nil
 			}
 		}
 	}
 
 	// No bbc.pipeline_run span found (e.g. step/command/container span) — no action needed.
 	return &Event{Key: eventKey}, nil
+}
+
+// buildPipelineRunEvent constructs the Event for a bbc.pipeline_run OTel span.
+func buildPipelineRunEvent(eventKey string, span wireOTelSpan) *Event {
+	// Build an attribute map for O(1) lookup.
+	attrs := make(map[string]wireOTelValue, len(span.Attributes))
+	for _, a := range span.Attributes {
+		attrs[a.Key] = a.Value
+	}
+
+	fullName := attrs["pipeline.repository.full_name"].StringValue
+	var repo Repository
+	repo.FullName = fullName
+	if workspace, repoSlug, ok := strings.Cut(fullName, "/"); ok {
+		repo.Workspace = Workspace{Slug: workspace}
+		repo.Name = repoSlug
+	}
+
+	runNumber, _ := strconv.Atoi(attrs["pipeline_run.run_number"].StringValue)
+	uuid := attrs["pipeline_run.uuid"].StringValue
+	url := attrs["pipeline_run.url"].StringValue
+
+	var durationSecs int
+	startNano, startErr := strconv.ParseInt(span.StartTimeUnixNano, 10, 64)
+	endNano, endErr := strconv.ParseInt(span.EndTimeUnixNano, 10, 64)
+	if startErr == nil && endErr == nil && endNano > startNano {
+		durationSecs = int((endNano - startNano) / nanosPerSecond)
+	}
+
+	return &Event{
+		Key: eventKey,
+		Pipeline: &PipelineRunEvent{
+			PipelineRun: PipelineRun{
+				UUID:         uuid,
+				RunNumber:    runNumber,
+				Result:       attrs["pipeline.state.result.name"].StringValue,
+				Trigger:      attrs["pipeline.trigger.name"].StringValue,
+				RefName:      attrs["pipeline.target.ref_name"].StringValue,
+				RefType:      attrs["pipeline.target.ref_type"].StringValue,
+				Repository:   repo,
+				RepoUUID:     attrs["pipeline.repository.uuid"].StringValue,
+				AccountUUID:  attrs["pipeline.account.uuid"].StringValue,
+				URL:          url,
+				DurationSecs: durationSecs,
+			},
+		},
+	}
 }
 
 func parseCommitStatusEvent(eventKey string, payload []byte) (*Event, error) {
