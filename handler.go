@@ -227,7 +227,8 @@ func (c *Client) handlePipelineEvent(ctx context.Context, ev *event.Event) error
 			c.logger.Error(fmt.Sprintf("bitslack: resolve repo UUID %q: %v", run.RepoUUID, err))
 			return nil
 		}
-		run.Repository = *repo
+		ev.Pipeline.PipelineRun.Repository = *repo
+		run = ev.Pipeline.PipelineRun
 	}
 
 	repoFullName := run.Repository.FullName

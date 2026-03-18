@@ -16,7 +16,7 @@
                 { "key": "pipeline.target.ref_name",       "value": { "stringValue": "feature/add-feature-x" } },
                 { "key": "pipeline.target.ref_type",       "value": { "stringValue": "BRANCH" } },
                 { "key": "pipeline_run.uuid",              "value": { "stringValue": "{aa111111-1111-1111-1111-111111111111}" } },
-                { "key": "pipeline_run.run_number",        "value": { "intValue": "5" } },
+                { "key": "pipeline_run.run_number",        "value": { "stringValue": "5" } },
                 { "key": "pipeline.state.result.name",     "value": { "stringValue": "COMPLETE" } },
                 { "key": "pipeline.trigger.name",          "value": { "stringValue": "PUSH" } },
                 { "key": "pipeline.repository.uuid",       "value": { "stringValue": "{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}" } },

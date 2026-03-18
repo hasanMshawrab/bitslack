@@ -2,6 +2,7 @@ package format
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hasanMshawrab/bitslack/internal/event"
 	"github.com/hasanMshawrab/bitslack/internal/format/markdown"
@@ -170,8 +171,21 @@ func commitStatusEmoji(state string) string {
 func formatPipelineRun(ev *event.PipelineRunEvent) string {
 	run := ev.PipelineRun
 	emoji := pipelineResultEmoji(run.Result)
-	return fmt.Sprintf("%s Pipeline <%s|#%d> • %s • %s • %s",
-		emoji, run.URL, run.RunNumber, run.Trigger, run.RefName, run.Repository.Name)
+	return fmt.Sprintf("%s *[%s] Pipeline <%s|#%d>* • %s • %s",
+		emoji, run.Repository.Name, run.URL, run.RunNumber, run.RefName, pipelineTriggerLabel(run.Trigger))
+}
+
+func pipelineTriggerLabel(trigger string) string {
+	switch trigger {
+	case "PUSH":
+		return "automatic trigger"
+	case "MANUAL":
+		return "manual trigger"
+	case "SCHEDULE":
+		return "scheduled trigger"
+	default:
+		return strings.ToLower(trigger) + " trigger"
+	}
 }
 
 func pipelineResultEmoji(result string) string {

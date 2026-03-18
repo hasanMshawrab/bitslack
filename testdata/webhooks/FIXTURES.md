@@ -80,7 +80,7 @@ Same build (`my-ci-tool`, commit `b7f6f6ef4c59`), state now `"SUCCESSFUL"`. Use 
 - `updated_on` differs from `created_on` — both timestamps are present for either display or filtering logic
 
 ### `pipeline/span_created_successful.json`
-`bbc.pipeline_run` span. Target branch `feature/add-feature-x` (same as PR `42`'s source branch), result `COMPLETE` (OTel value for a successful run), trigger `PUSH`, run number `5`. Uses UUID attributes instead of `full_name`. Use this to test:
+`bbc.pipeline_run` span. Target branch `feature/add-feature-x` (same as PR `42`'s source branch), result `COMPLETE` (OTel value for a successful run), trigger `PUSH`, run number `5` (delivered as `stringValue`, matching real Bitbucket OTel payloads). Uses UUID attributes instead of `full_name`. Use this to test:
 - Repository UUID resolution: `GetRepository` is called with the account and repo UUIDs, returning `myworkspace/my-repo`
 - Branch→PR lookup: Bitbucket API is called with the branch name, returns PR `42`
 - Pipeline result `COMPLETE` maps to `✅` emoji

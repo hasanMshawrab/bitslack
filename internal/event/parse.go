@@ -323,7 +323,7 @@ func parsePipelineSpanEvent(eventKey string, payload []byte) (*Event, error) {
 					repo.Name = repoSlug
 				}
 
-				runNumber, _ := strconv.Atoi(attrs["pipeline_run.run_number"].IntValue)
+				runNumber, _ := strconv.Atoi(attrs["pipeline_run.run_number"].StringValue)
 				uuid := attrs["pipeline_run.uuid"].StringValue
 				url := attrs["pipeline_run.url"].StringValue
 

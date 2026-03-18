@@ -187,7 +187,15 @@ The `account.uuid` is used as the workspace identifier (Bitbucket accepts UUIDs 
 
 **Result values:** OTel `pipeline.state.result.name` uses different values than the REST API. The mapping is: `COMPLETE` → ✅, `FAILED` → ❌, `ERROR` → 🔴, `STOPPED` → ⏹. These differ from `repo:commit_status_*` which uses `SUCCESSFUL`/`FAILED`/`INPROGRESS`.
 
+**Run number:** The `pipeline_run.run_number` OTel attribute is delivered as a `stringValue` (not `intValue`) and is parsed via `strconv.Atoi`.
+
 **Run URL:** The `pipeline_run.url` span attribute is used directly as the link in the Slack message.
+
+**Message format:** Pipeline results are formatted as:
+```
+{emoji} *[{repo}] Pipeline <{url}|#{run}>* • {branch} • {trigger label}
+```
+Trigger labels: `PUSH` → `automatic trigger`, `MANUAL` → `manual trigger`, `SCHEDULE` → `scheduled trigger`, anything else → lowercased + ` trigger`.
 
 PR linkage for pipeline events:
 - If `pipeline.target.ref_type = BRANCH`: call the Bitbucket API to find the open PR for that branch:
