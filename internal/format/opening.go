@@ -15,7 +15,7 @@ import (
 // Returns empty string if no mapping exists.
 type UserResolver func(accountID string) string
 
-var clickUpURLRe = regexp.MustCompile(`https://app\.clickup\.com/t/[^\s)>]+`)
+var clickUpURLRe = regexp.MustCompile(`https://app\.clickup\.com/t/[^\s)>\]]+`)
 
 // extractClickUpURL returns the first ClickUp task URL found in s, or "".
 func extractClickUpURL(s string) string {

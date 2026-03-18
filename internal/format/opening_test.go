@@ -293,6 +293,32 @@ func TestOpeningMessage_ClickUpTicket(t *testing.T) {
 	assertContains(t, rendered, "*Ticket:* <https://app.clickup.com/t/abc123def|View Ticket>")
 }
 
+func TestOpeningMessage_ClickUpTicket_MarkdownLink(t *testing.T) {
+	// PR description uses Bitbucket markdown link syntax wrapping the ClickUp URL.
+	// The regex must not include the ](url) markdown scaffolding in the extracted URL.
+	pr := &event.PullRequest{
+		ID:          9,
+		Title:       "Ticket PR markdown",
+		Description: "[https://app.clickup.com/t/zz9876xy](https://app.clickup.com/t/zz9876xy){: data-inline-card='' }",
+		Author:      event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
+		Source: event.Endpoint{
+			Branch:     event.Branch{Name: "feat/ticket"},
+			Repository: event.Repository{Name: "my-repo"},
+		},
+		Destination: event.Endpoint{
+			Branch:     event.Branch{Name: "main"},
+			Repository: event.Repository{Name: "my-repo"},
+		},
+		HTMLURL: "https://bitbucket.org/myworkspace/my-repo/pull-requests/9",
+	}
+	resolve := mapResolver(map[string]string{"acct-jane": "U001JANE"})
+
+	_, blocks := format.OpeningMessage(pr, resolve)
+	rendered := blocksToText(blocks)
+
+	assertContains(t, rendered, "*Ticket:* <https://app.clickup.com/t/zz9876xy|View Ticket>")
+}
+
 func TestOpeningMessage_NoTicket_WhenNoClickUpURL(t *testing.T) {
 	pr := &event.PullRequest{
 		ID:          10,
