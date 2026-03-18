@@ -24,6 +24,9 @@ var (
 // to Slack mrkdwn. resolve maps a Bitbucket account ID to a Slack user ID;
 // it may return "" to fall back to the raw account ID.
 func ToSlack(raw string, resolve func(accountID string) string) string {
+	if resolve == nil {
+		resolve = func(string) string { return "" }
+	}
 	s := raw
 
 	// Step 1: Line-level processing (must come before inline so headings
