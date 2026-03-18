@@ -17,9 +17,11 @@ Bitbucket webhooks fire individual events with no threading. If your team uses S
 
 ### Supported Events
 
-**Pull Request:** `created`, `updated`, `approved`, `unapproved`, `fulfilled` (merged), `rejected` (declined), `comment_created`
+**Pull Request** (default): `created`, `updated`, `approved`, `unapproved`, `fulfilled` (merged), `rejected` (declined), `comment_created`
 
-**Build Status:** `repo:commit_status_created`, `repo:commit_status_updated`
+**Build Status** (opt-in): `repo:commit_status_created`, `repo:commit_status_updated`
+
+**Pipeline** (opt-in): `pipeline:span_created` — only `bbc.pipeline_run` spans; step/command/container spans are skipped silently
 
 ## Installation
 
@@ -125,6 +127,20 @@ bitslack.Config{
     HTTPClient:        &http.Client{Timeout: 15*time.Second}, // optional (defaults to 10s)
     BitbucketBaseURL:  "https://api.bitbucket.org/2.0",     // optional (for testing)
     SlackBaseURL:      "https://slack.com/api",              // optional (for testing)
+
+    // Which webhook event families to handle. Defaults to [EventFamilyPullRequest].
+    EnabledEvents: []bitslack.EventFamily{
+        bitslack.EventFamilyPullRequest,
+        bitslack.EventFamilyPipeline, // opt-in; omit EventFamilyCommitStatus to avoid duplicates
+    },
+
+    // Controls how PR comment bodies are rendered in Slack.
+    FormatOptions: bitslack.FormatOptions{
+        CommentContent:            bitslack.CommentDisplaySummary, // Full (default), Summary, or None
+        CommentSummaryLength:      200,                            // max display chars in summary mode
+        ShowCommentLink:           true,                           // append "<url|View comment>"
+        DistinguishCommentReplies: true,                           // label replies differently from top-level comments
+    },
 }
 ```
 

@@ -66,11 +66,20 @@ func TestToSlack_Divider(t *testing.T) {
 	}
 }
 
-func TestToSlack_TableStripped(t *testing.T) {
-	input := "| col1 | col2 |\n|------|------|\n| a    | b    |"
+func TestToSlack_TableFormatted(t *testing.T) {
+	input := "| **Title 1** | **Title 2** |\n| --- | --- |\n| row 1.1 | row 2.1 |\n| row 1.2 | row 2.2 |"
 	got := markdown.ToSlack(input, noopResolve)
-	if strings.Contains(got, "|") {
-		t.Fatalf("expected table pipes removed, got %q", got)
+	if !strings.HasPrefix(got, "```") {
+		t.Fatalf("expected table wrapped in code block, got %q", got)
+	}
+	if strings.Contains(got, "**") {
+		t.Fatalf("expected bold markers stripped from headers, got %q", got)
+	}
+	if !strings.Contains(got, "Title 1") || !strings.Contains(got, "Title 2") {
+		t.Fatalf("expected header text preserved, got %q", got)
+	}
+	if !strings.Contains(got, "row 1.1") || !strings.Contains(got, "row 2.2") {
+		t.Fatalf("expected data rows preserved, got %q", got)
 	}
 }
 
@@ -79,6 +88,22 @@ func TestToSlack_MixedDividerNotStripped(t *testing.T) {
 	got := markdown.ToSlack("-*-", noopResolve)
 	if got == "" {
 		t.Fatalf("mixed divider should not be stripped, got empty string")
+	}
+}
+
+func TestToSlack_ItalicBold(t *testing.T) {
+	// _**text**_ → *_text_* so Slack renders both bold and italic.
+	got := markdown.ToSlack("_**bold italic**_", noopResolve)
+	if got != "*_bold italic_*" {
+		t.Fatalf("want %q, got %q", "*_bold italic_*", got)
+	}
+}
+
+func TestToSlack_BoldItalic(t *testing.T) {
+	// **_text_** → *_text_*
+	got := markdown.ToSlack("**_bold italic_**", noopResolve)
+	if got != "*_bold italic_*" {
+		t.Fatalf("want %q, got %q", "*_bold italic_*", got)
 	}
 }
 

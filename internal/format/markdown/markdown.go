@@ -12,6 +12,9 @@ var (
 	reDivider    = regexp.MustCompile(`^(-{3,}|\*{3,}|_{3,})\s*$`)
 	reUList      = regexp.MustCompile(`^[*-]\s+(.+)$`)
 	reTable      = regexp.MustCompile(`^\|.*\|$`)
+	reTableSep   = regexp.MustCompile(`^\|[\s\-:|]+\|$`)
+	reItalicBold = regexp.MustCompile(`_\*\*(.+?)\*\*_`)
+	reBoldItalic = regexp.MustCompile(`\*\*_(.+?)_\*\*`)
 	reInlineBold = regexp.MustCompile(`\*\*(.+?)\*\*`)
 	reKramdown   = regexp.MustCompile(`\{:[^}]*\}`)
 	reImage      = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`)
@@ -32,22 +35,38 @@ func ToSlack(raw string, resolve func(accountID string) string) string {
 
 	// Step 1: Line-level processing (must come before inline so headings
 	// are wrapped in *...* before inline bold is applied to their content).
+	// Tables are collected as consecutive blocks and formatted together.
 	lines := strings.Split(s, "\n")
-	for i, line := range lines {
+	result := make([]string, 0, len(lines))
+	i := 0
+	for i < len(lines) {
+		line := lines[i]
 		switch {
 		case reHeading.MatchString(line):
 			sub := reHeading.FindStringSubmatch(line)
-			lines[i] = "*" + sub[1] + "*"
+			result = append(result, "*"+sub[1]+"*")
+			i++
 		case reDivider.MatchString(line):
-			lines[i] = ""
+			result = append(result, "")
+			i++
 		case reUList.MatchString(line):
 			sub := reUList.FindStringSubmatch(line)
-			lines[i] = "• " + sub[1]
+			result = append(result, "• "+sub[1])
+			i++
 		case reTable.MatchString(line):
-			lines[i] = ""
+			// Collect all consecutive table lines, then format as one block.
+			j := i
+			for j < len(lines) && reTable.MatchString(lines[j]) {
+				j++
+			}
+			result = append(result, formatTable(lines[i:j]))
+			i = j
+		default:
+			result = append(result, line)
+			i++
 		}
 	}
-	s = strings.Join(lines, "\n")
+	s = strings.Join(result, "\n")
 
 	// Step 2: Inline replacements.
 	// Kramdown attrs first (before image/link processing).
@@ -69,6 +88,12 @@ func ToSlack(raw string, resolve func(accountID string) string) string {
 		sub := reLink.FindStringSubmatch(m)
 		return "<" + sub[2] + "|" + sub[1] + ">"
 	})
+
+	// Bold+italic combinations must be handled before individual bold,
+	// otherwise **...** is consumed first and the outer _ becomes orphaned.
+	// Both forms → *_text_* (bold outer, italic inner — Slack renders both).
+	s = reItalicBold.ReplaceAllString(s, "*_${1}_*")
+	s = reBoldItalic.ReplaceAllString(s, "*_${1}_*")
 
 	// Bold: **text** → *text*
 	s = reInlineBold.ReplaceAllString(s, "*$1*")
@@ -181,6 +206,91 @@ func Truncate(mrkdwn string, maxDisplay int) string {
 
 	truncated := strings.TrimRight(result.String(), " ")
 	return truncated + "…" + closedSpans(truncated)
+}
+
+// formatTable converts consecutive Markdown table lines into an aligned
+// plain-text table wrapped in a Slack code block.
+func formatTable(tableLines []string) string {
+	var rows [][]string
+	for _, line := range tableLines {
+		if reTableSep.MatchString(line) {
+			continue // skip separator rows (| --- | --- |)
+		}
+		rows = append(rows, parseTableRow(line))
+	}
+	if len(rows) == 0 {
+		return ""
+	}
+
+	// Calculate max column widths across all rows.
+	numCols := 0
+	for _, row := range rows {
+		if len(row) > numCols {
+			numCols = len(row)
+		}
+	}
+	widths := make([]int, numCols)
+	for _, row := range rows {
+		for j, cell := range row {
+			if w := len([]rune(cell)); w > widths[j] {
+				widths[j] = w
+			}
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("```\n")
+	for idx, row := range rows {
+		writeTableRow(&sb, row, widths, numCols)
+		if idx == 0 {
+			// Separator line after the header row.
+			sb.WriteString("| ")
+			for j := range numCols {
+				sb.WriteString(strings.Repeat("-", widths[j]))
+				sb.WriteString(" | ")
+			}
+			sb.WriteString("\n")
+		}
+	}
+	sb.WriteString("```")
+	return sb.String()
+}
+
+// parseTableRow splits a Markdown table row on "|", trims whitespace,
+// strips bold markers from each cell, and drops the leading/trailing empty
+// tokens produced by the surrounding pipes.
+func parseTableRow(line string) []string {
+	parts := strings.Split(line, "|")
+	cells := make([]string, 0, len(parts))
+	for _, p := range parts {
+		cell := strings.TrimSpace(p)
+		cell = reInlineBold.ReplaceAllString(cell, "$1")
+		cells = append(cells, cell)
+	}
+	// "| a | b |".split("|") → ["", " a ", " b ", ""] — drop surrounding empties.
+	for len(cells) > 0 && cells[0] == "" {
+		cells = cells[1:]
+	}
+	for len(cells) > 0 && cells[len(cells)-1] == "" {
+		cells = cells[:len(cells)-1]
+	}
+	return cells
+}
+
+// writeTableRow writes one padded row to sb.
+func writeTableRow(sb *strings.Builder, row []string, widths []int, numCols int) {
+	sb.WriteString("| ")
+	for j := range numCols {
+		var cell string
+		if j < len(row) {
+			cell = row[j]
+		}
+		runes := []rune(cell)
+		sb.WriteString(string(runes))
+		sb.WriteString(strings.Repeat(" ", widths[j]-len(runes)))
+		sb.WriteString(" | ")
+	}
+	sb.WriteString("\n")
 }
 
 func closedSpans(s string) string {

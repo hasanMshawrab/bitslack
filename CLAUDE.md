@@ -132,7 +132,18 @@ Comment reply formatting is controlled by `Config.FormatOptions` (`FormatOptions
 
 `Comment.ParentID` (parsed from `comment.parent.id` in the webhook payload) is `0` for top-level comments and non-zero for replies.
 
-**Markdown conversion** (`internal/format/markdown`): comment bodies are converted from Bitbucket CommonMark/extensions to Slack mrkdwn before display. Conversion rules: `**bold**`→`*bold*`, `~~strike~~`→`~strike~`, `[text](url)`→`<url|text>`, `![alt](url)`→`<url|📎 alt>`, `@{account_id}`→`<@slackID>`, headings→`*text*`, unordered list items→`•`, dividers stripped, tables stripped. Ordered lists and inline code pass through unchanged.
+**Markdown conversion** (`internal/format/markdown`): comment bodies are converted from Bitbucket CommonMark/extensions to Slack mrkdwn before display. Conversion rules:
+- `**bold**` → `*bold*`
+- `_**bold italic**_` / `**_bold italic_**` → `*_bold italic_*` (combined patterns handled before individual bold to prevent marker bleed)
+- `~~strike~~` → `~strike~`
+- `[text](url)` → `<url|text>`
+- `![alt](url)` → `<url|📎 alt>`
+- `@{account_id}` → `<@slackID>` (resolved) or `@account_id` (unresolved)
+- Headings → `*text*`
+- Unordered list items → `• item`
+- Dividers (`---`) → stripped
+- Tables → reformatted as an aligned plain-text table wrapped in a ` ``` ` code block; bold markers stripped from header cells; separator row uses dashes matching column width
+- Ordered lists and inline/fenced code pass through unchanged
 
 ### Core Flow
 
