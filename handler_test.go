@@ -1036,7 +1036,12 @@ func TestHandler_Pipeline_StepSpanSkipped(t *testing.T) {
 }
 
 func TestHandler_Pipeline_StepBreakdownIncluded(t *testing.T) {
-	// Verify that the step breakdown (name, emoji) appears in the pipeline reply.
+	// Verify that the step breakdown (name, emoji, URL) appears in the pipeline reply.
+	// Uses span_created_failed.json:
+	//   pipeline_run.uuid      = {bb222222-2222-2222-2222-222222222222}
+	//   pipeline.account.uuid  = {ffffffff-0000-1111-2222-333333333333}
+	//   pipeline.repository.uuid = {aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}
+	// Mock steps: Lint (SUCCESSFUL, {step-001-lint}) and Test (FAILED, {step-002-test}).
 	h := newPipelineHarness(t)
 	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
 	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_failed.json")
@@ -1052,19 +1057,25 @@ func TestHandler_Pipeline_StepBreakdownIncluded(t *testing.T) {
 		t.Fatalf("expected 1 Slack call (reply), got %d", len(calls))
 	}
 	text, _ := calls[0].Body["text"].(string)
-	// Header emoji (fixed) and step-level emojis must both appear.
+
+	// Fixed header emoji must appear.
 	if !strings.Contains(text, "⚙️") {
 		t.Errorf("expected ⚙️ in message, got %q", text)
 	}
-	if !strings.Contains(text, "Lint") {
-		t.Errorf("expected step name 'Lint' in message, got %q", text)
+	// Successful step: plain name (not hyperlinked).
+	if !strings.Contains(text, "✅ Lint") {
+		t.Errorf("expected '✅ Lint' in message, got %q", text)
 	}
-	if !strings.Contains(text, "Test") {
-		t.Errorf("expected step name 'Test' in message, got %q", text)
-	}
-	// The failed step (Test) should be hyperlinked.
-	if !strings.Contains(text, "<") || !strings.Contains(text, "Test") {
-		t.Errorf("expected failed step 'Test' to be hyperlinked, got %q", text)
+	// Failed step: hyperlinked with exact URL built from fixture UUIDs.
+	// buildStepURL encodes { } as %7B %7D.
+	const wantStepLink = "<https://bitbucket.org/" +
+		"%7Bffffffff-0000-1111-2222-333333333333%7D/" +
+		"%7Baaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee%7D/" +
+		"pipelines/results/%7Bbb222222-2222-2222-2222-222222222222%7D/" +
+		"runs/%7Bbb222222-2222-2222-2222-222222222222%7D/" +
+		"steps/%7Bstep-002-test%7D|Test>"
+	if !strings.Contains(text, wantStepLink) {
+		t.Errorf("expected failed step link %q in message, got %q", wantStepLink, text)
 	}
 }
 

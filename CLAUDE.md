@@ -203,7 +203,7 @@ Trigger labels: `PUSH` → `automatic trigger`, `MANUAL` → `manual trigger`, `
 
 Result text: `COMPLETE` → `Passed`, `FAILED` → `Failed`, `ERROR` → `Error`, `STOPPED` → `Stopped`.
 
-**Step breakdown:** After the debounce delay, the handler calls `GET /repositories/{workspace}/{repo}/pipelines/{uuid}/steps/` to fetch step details. Each step is rendered on its own line below the header. Step result emojis: `✅` SUCCESSFUL, `❌` FAILED, `🔴` ERROR, `⏹` STOPPED, `⏭` NOT_RUN. Failed and errored steps are hyperlinked to the Bitbucket UI; other steps show a plain name.
+**Step breakdown:** After the debounce delay, the handler calls `GET /repositories/{workspace}/{repo}/pipelines/{uuid}/steps/` to fetch step details. Each step is rendered on its own line below the header. Step result emojis: `✅` SUCCESSFUL, `❌` FAILED, `🔴` ERROR, `🛑` STOPPED, `⏭` NOT_RUN. Failed and errored steps are hyperlinked to the Bitbucket UI; other steps show a plain name.
 
 **Debounce:** `Handler` returns nil immediately. The first delivery of a `pipeline_run.uuid` schedules `processPipelineRun` via `time.AfterFunc` after `Config.PipelineDebounce` (default 3 s). A `sync.Mutex`-protected `map[string]struct{}` tracks in-flight UUIDs — subsequent deliveries of the same UUID are silently dropped until the goroutine cleans up. The goroutine uses `context.Background()` because the HTTP request context has expired by the time the timer fires.
 
