@@ -49,9 +49,13 @@ The ID looks like `U08XXXXXXXXX`.
 
 1. Go to [https://id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
 2. Click **Create API token** and give it a label (e.g. `bitslack`)
-3. Copy the token immediately — it will not be shown again
+3. When prompted to select scopes, enable the following under **Read**:
+   - `read:repository:bitbucket` — required for all event families
+   - `read:pullrequest:bitbucket` — required for all event families
+   - `read:pipeline:bitbucket` — required only if you enable `EventFamilyPipeline`
+4. Copy the token immediately — it will not be shown again
 
-> **Note:** This page replaced the old Bitbucket App Passwords. API tokens use HTTP Basic auth with your Atlassian account email as the username.
+> **Note:** API tokens use HTTP Basic auth with your Atlassian account email as the username.
 
 Use the token as follows in your `Config`:
 
@@ -61,8 +65,6 @@ bitslack.Config{
     BitbucketToken:    "YOUR_API_TOKEN",
 }
 ```
-
-Read-only access to repositories and pull requests is sufficient. No write permissions are needed.
 
 ---
 

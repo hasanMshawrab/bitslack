@@ -266,7 +266,7 @@ client := bitslack.New(bitslack.Config{
 ```
 
 - **Slack**: Bot token (`xoxb-...`). Required OAuth scopes: `chat:write`. Add `chat:write.public` if the bot needs to post to channels it hasn't been explicitly invited to.
-- **Bitbucket**: Atlassian API token with `read:repository:bitbucket` and `read:pullrequest:bitbucket` scopes. Uses HTTP Basic auth (username + token).
+- **Bitbucket**: Atlassian API token with `read:repository:bitbucket` and `read:pullrequest:bitbucket` scopes (add `read:pipeline:bitbucket` if using `EventFamilyPipeline`). Uses HTTP Basic auth (username + token).
 
 ### Testing Strategy
 
