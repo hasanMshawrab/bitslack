@@ -360,6 +360,7 @@ func buildPipelineRunEvent(eventKey string, span wireOTelSpan) *Event {
 
 	runNumber, _ := strconv.Atoi(attrs["pipeline_run.run_number"].StringValue)
 	uuid := attrs["pipeline_run.uuid"].StringValue
+	pipelineUUID := attrs["pipeline.uuid"].StringValue
 	url := attrs["pipeline_run.url"].StringValue
 
 	var durationSecs int
@@ -374,6 +375,7 @@ func buildPipelineRunEvent(eventKey string, span wireOTelSpan) *Event {
 		Pipeline: &PipelineRunEvent{
 			PipelineRun: PipelineRun{
 				UUID:         uuid,
+				PipelineUUID: pipelineUUID,
 				RunNumber:    runNumber,
 				Result:       attrs["pipeline.state.result.name"].StringValue,
 				Trigger:      attrs["pipeline.trigger.name"].StringValue,

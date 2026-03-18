@@ -292,14 +292,14 @@ func (c *Client) processPipelineRun(ev *event.Event) {
 	repoFullName := run.Repository.FullName
 
 	// Fetch per-step details from the Bitbucket API.
-	steps, err := c.bbClient.GetPipelineSteps(ctx, workspace, repoSlug, run.UUID)
+	steps, err := c.bbClient.GetPipelineSteps(ctx, workspace, repoSlug, run.PipelineUUID)
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("bitslack: get pipeline steps for %s pipeline %s: %v",
 			repoFullName, run.UUID, err))
 		// Continue with no step data — header-only message will be posted.
 	} else {
 		for i := range steps {
-			steps[i].URL = buildStepURL(run.AccountUUID, run.RepoUUID, run.UUID, steps[i].UUID)
+			steps[i].URL = buildStepURL(run.AccountUUID, run.RepoUUID, run.PipelineUUID, run.UUID, steps[i].UUID)
 		}
 		ev.Pipeline.Steps = steps
 	}
@@ -346,11 +346,12 @@ func allStepsStopped(steps []event.PipelineStep) bool {
 }
 
 // buildStepURL constructs the Bitbucket UI URL for a specific pipeline step log.
-func buildStepURL(accountUUID, repoUUID, pipelineRunUUID, stepUUID string) string {
+// pipelineUUID is pipeline.uuid (the build); pipelineRunUUID is pipeline_run.uuid (the run).
+func buildStepURL(accountUUID, repoUUID, pipelineUUID, pipelineRunUUID, stepUUID string) string {
 	return fmt.Sprintf("https://bitbucket.org/%s/%s/pipelines/results/%s/runs/%s/steps/%s",
 		url.PathEscape(accountUUID),
 		url.PathEscape(repoUUID),
-		url.PathEscape(pipelineRunUUID),
+		url.PathEscape(pipelineUUID),
 		url.PathEscape(pipelineRunUUID),
 		url.PathEscape(stepUUID),
 	)

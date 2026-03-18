@@ -1093,8 +1093,9 @@ func TestHandler_Pipeline_StepSpanSkipped(t *testing.T) {
 func TestHandler_Pipeline_StepBreakdownIncluded(t *testing.T) {
 	// Verify that the step breakdown (name, emoji, URL) appears in the pipeline reply.
 	// Uses span_created_failed.json:
-	//   pipeline_run.uuid      = {bb222222-2222-2222-2222-222222222222}
-	//   pipeline.account.uuid  = {ffffffff-0000-1111-2222-333333333333}
+	//   pipeline_run.uuid        = {bb222222-2222-2222-2222-222222222222}
+	//   pipeline.uuid            = {ee555555-5555-5555-5555-555555555555}
+	//   pipeline.account.uuid    = {ffffffff-0000-1111-2222-333333333333}
 	//   pipeline.repository.uuid = {aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}
 	// Mock steps: Lint (SUCCESSFUL, {step-001-lint}) and Test (FAILED, {step-002-test}).
 	h := newPipelineHarness(t)
@@ -1123,10 +1124,11 @@ func TestHandler_Pipeline_StepBreakdownIncluded(t *testing.T) {
 	}
 	// Failed step: hyperlinked with exact URL built from fixture UUIDs.
 	// buildStepURL encodes { } as %7B %7D.
+	// results/ uses pipeline.uuid (ee555555), runs/ uses pipeline_run.uuid (bb222222).
 	const wantStepLink = "<https://bitbucket.org/" +
 		"%7Bffffffff-0000-1111-2222-333333333333%7D/" +
 		"%7Baaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee%7D/" +
-		"pipelines/results/%7Bbb222222-2222-2222-2222-222222222222%7D/" +
+		"pipelines/results/%7Bee555555-5555-5555-5555-555555555555%7D/" +
 		"runs/%7Bbb222222-2222-2222-2222-222222222222%7D/" +
 		"steps/%7Bstep-002-test%7D|Test>"
 	if !strings.Contains(text, wantStepLink) {

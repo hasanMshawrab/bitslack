@@ -16,6 +16,7 @@
                 { "key": "pipeline.target.ref_name",       "value": { "stringValue": "main" } },
                 { "key": "pipeline.target.ref_type",       "value": { "stringValue": "BRANCH" } },
                 { "key": "pipeline_run.uuid",              "value": { "stringValue": "{cc333333-3333-3333-3333-333333333333}" } },
+                { "key": "pipeline.uuid",                  "value": { "stringValue": "{ff666666-6666-6666-6666-666666666666}" } },
                 { "key": "pipeline_run.run_number",        "value": { "intValue": "12" } },
                 { "key": "pipeline.state.result.name",     "value": { "stringValue": "COMPLETE" } },
                 { "key": "pipeline.trigger.name",          "value": { "stringValue": "MANUAL" } },

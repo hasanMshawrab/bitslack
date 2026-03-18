@@ -141,7 +141,8 @@ type CommitStatusEvent struct {
 // PipelineRun holds data for a single Bitbucket Pipelines run,
 // extracted from a bbc.pipeline_run OTel span.
 type PipelineRun struct {
-	UUID         string
+	UUID         string // pipeline_run.uuid — used for debounce deduplication
+	PipelineUUID string // pipeline.uuid — used for the Bitbucket steps API
 	RunNumber    int
 	Result       string // OTel values: "COMPLETE", "FAILED", "ERROR", "STOPPED"
 	Trigger      string // "PUSH", "MANUAL", "SCHEDULED"

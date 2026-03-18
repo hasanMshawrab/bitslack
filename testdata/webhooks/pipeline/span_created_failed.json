@@ -16,6 +16,7 @@
                 { "key": "pipeline.target.ref_name",       "value": { "stringValue": "feature/add-feature-x" } },
                 { "key": "pipeline.target.ref_type",       "value": { "stringValue": "BRANCH" } },
                 { "key": "pipeline_run.uuid",              "value": { "stringValue": "{bb222222-2222-2222-2222-222222222222}" } },
+                { "key": "pipeline.uuid",                  "value": { "stringValue": "{ee555555-5555-5555-5555-555555555555}" } },
                 { "key": "pipeline_run.run_number",        "value": { "intValue": "6" } },
                 { "key": "pipeline.state.result.name",     "value": { "stringValue": "FAILED" } },
                 { "key": "pipeline.trigger.name",          "value": { "stringValue": "PUSH" } },
