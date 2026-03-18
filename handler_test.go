@@ -113,6 +113,14 @@ func newHarness(t *testing.T) *testHarness {
 			return
 		}
 
+		// GET /repositories/{ws}/{repo} — standalone repository lookup (no subpath beyond ws/repo)
+		noSubpath := !strings.Contains(path, "/pullrequests") && !strings.Contains(path, "/commit")
+		if strings.HasPrefix(path, "/repositories/") && noSubpath {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, bbRepoResponse())
+			return
+		}
+
 		http.NotFound(w, r)
 	}))
 
@@ -218,6 +226,16 @@ func bbPRResponse() string {
 // bbCommitPRsResponse returns a Bitbucket commit-to-PRs list response.
 func bbCommitPRsResponse() string {
 	return fmt.Sprintf(`{"values": [%s]}`, bbPRResponse())
+}
+
+// bbRepoResponse returns a Bitbucket repository API response for myworkspace/my-repo.
+func bbRepoResponse() string {
+	return `{
+		"full_name": "myworkspace/my-repo",
+		"name": "my-repo",
+		"workspace": {"slug": "myworkspace"},
+		"links": {"html": {"href": "https://bitbucket.org/myworkspace/my-repo"}}
+	}`
 }
 
 // bbOpenPRListNoReviewers returns a Bitbucket list-PRs response that omits the reviewers field,

@@ -176,3 +176,29 @@ func toRepository(r repoRef) event.Repository {
 		HTMLURL:  r.Links.HTML.Href,
 	}
 }
+
+// repoFullResponse is the wire type for a standalone repository API response.
+type repoFullResponse struct {
+	FullName  string `json:"full_name"`
+	Name      string `json:"name"`
+	Workspace struct {
+		Slug string `json:"slug"`
+	} `json:"workspace"`
+	Links repoLinksRef `json:"links"`
+}
+
+// GetRepository fetches a repository by workspace and repo identifiers.
+// workspace and repo may be slugs or UUIDs (with curly braces, e.g. "{uuid}").
+func (c *Client) GetRepository(ctx context.Context, workspace, repo string) (*event.Repository, error) {
+	path := fmt.Sprintf("/repositories/%s/%s", workspace, repo)
+	var raw repoFullResponse
+	if err := c.get(ctx, path, &raw); err != nil {
+		return nil, err
+	}
+	return &event.Repository{
+		FullName:  raw.FullName,
+		Name:      raw.Name,
+		Workspace: event.Workspace{Slug: raw.Workspace.Slug},
+		HTMLURL:   raw.Links.HTML.Href,
+	}, nil
+}

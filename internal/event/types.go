@@ -130,14 +130,16 @@ type CommitStatusEvent struct {
 // PipelineRun holds data for a single Bitbucket Pipelines run,
 // extracted from a bbc.pipeline_run OTel span.
 type PipelineRun struct {
-	UUID       string
-	RunNumber  int
-	Result     string // "SUCCESSFUL", "FAILED", "ERROR", "STOPPED"
-	Trigger    string // "PUSH", "MANUAL", "SCHEDULED"
-	RefName    string // branch or tag name
-	RefType    string // "BRANCH" or "TAG"
-	Repository Repository
-	URL        string // link to the pipeline run in Bitbucket UI
+	UUID        string
+	RunNumber   int
+	Result      string // OTel values: "COMPLETE", "FAILED", "ERROR", "STOPPED"
+	Trigger     string // "PUSH", "MANUAL", "SCHEDULED"
+	RefName     string // branch or tag name
+	RefType     string // "BRANCH" or "TAG"
+	Repository  Repository
+	RepoUUID    string // pipeline.repository.uuid — used to resolve repo when full_name is absent
+	AccountUUID string // pipeline.account.uuid — used to resolve repo when full_name is absent
+	URL         string // link to the pipeline run in Bitbucket UI
 }
 
 // PipelineRunEvent is the parsed form of a pipeline:span_created bbc.pipeline_run span.

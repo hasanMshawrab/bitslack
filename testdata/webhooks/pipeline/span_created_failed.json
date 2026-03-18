@@ -19,7 +19,9 @@
                 { "key": "pipeline_run.run_number",        "value": { "intValue": "6" } },
                 { "key": "pipeline.state.result.name",     "value": { "stringValue": "FAILED" } },
                 { "key": "pipeline.trigger.name",          "value": { "stringValue": "PUSH" } },
-                { "key": "pipeline.repository.full_name",  "value": { "stringValue": "myworkspace/my-repo" } }
+                { "key": "pipeline.repository.uuid",       "value": { "stringValue": "{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}" } },
+                { "key": "pipeline.account.uuid",          "value": { "stringValue": "{ffffffff-0000-1111-2222-333333333333}" } },
+                { "key": "pipeline_run.url",               "value": { "stringValue": "https://bitbucket.org/%7Bffffffff%7D/%7Baaaaaaaa%7D/pipelines/results/6" } }
               ]
             }
           ]

@@ -218,6 +218,18 @@ func (c *Client) handleCommitStatusEvent(ctx context.Context, ev *event.Event) e
 // Only bbc.pipeline_run spans are handled; other span types produce a nil Pipeline field and are no-ops.
 func (c *Client) handlePipelineEvent(ctx context.Context, ev *event.Event) error {
 	run := ev.Pipeline.PipelineRun
+
+	// Real Bitbucket OTel payloads omit pipeline.repository.full_name.
+	// Resolve the repo via the API using the UUID attributes when full_name is absent.
+	if run.Repository.FullName == "" && run.RepoUUID != "" {
+		repo, err := c.bbClient.GetRepository(ctx, run.AccountUUID, run.RepoUUID)
+		if err != nil {
+			c.logger.Error(fmt.Sprintf("bitslack: resolve repo UUID %q: %v", run.RepoUUID, err))
+			return nil
+		}
+		run.Repository = *repo
+	}
+
 	repoFullName := run.Repository.FullName
 
 	channel, ok := c.configStore.GetChannel(repoFullName)

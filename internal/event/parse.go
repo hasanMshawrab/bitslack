@@ -317,20 +317,22 @@ func parsePipelineSpanEvent(eventKey string, payload []byte) (*Event, error) {
 
 				runNumber, _ := strconv.Atoi(attrs["pipeline_run.run_number"].IntValue)
 				uuid := attrs["pipeline_run.uuid"].StringValue
-				url := fmt.Sprintf("https://bitbucket.org/%s/pipelines/results/%s", fullName, uuid)
+				url := attrs["pipeline_run.url"].StringValue
 
 				return &Event{
 					Key: eventKey,
 					Pipeline: &PipelineRunEvent{
 						PipelineRun: PipelineRun{
-							UUID:       uuid,
-							RunNumber:  runNumber,
-							Result:     attrs["pipeline.state.result.name"].StringValue,
-							Trigger:    attrs["pipeline.trigger.name"].StringValue,
-							RefName:    attrs["pipeline.target.ref_name"].StringValue,
-							RefType:    attrs["pipeline.target.ref_type"].StringValue,
-							Repository: repo,
-							URL:        url,
+							UUID:        uuid,
+							RunNumber:   runNumber,
+							Result:      attrs["pipeline.state.result.name"].StringValue,
+							Trigger:     attrs["pipeline.trigger.name"].StringValue,
+							RefName:     attrs["pipeline.target.ref_name"].StringValue,
+							RefType:     attrs["pipeline.target.ref_type"].StringValue,
+							Repository:  repo,
+							RepoUUID:    attrs["pipeline.repository.uuid"].StringValue,
+							AccountUUID: attrs["pipeline.account.uuid"].StringValue,
+							URL:         url,
 						},
 					},
 				}, nil

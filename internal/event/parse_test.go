@@ -291,23 +291,28 @@ func TestParse_PipelineSpanCreated_PipelineRun(t *testing.T) {
 	if run.RunNumber != 5 {
 		t.Errorf("RunNumber = %d, want 5", run.RunNumber)
 	}
-	if run.Result != "SUCCESSFUL" {
-		t.Errorf("Result = %q, want %q", run.Result, "SUCCESSFUL")
+	// Real Bitbucket OTel payloads use COMPLETE (not SUCCESSFUL) for successful runs.
+	if run.Result != "COMPLETE" {
+		t.Errorf("Result = %q, want %q", run.Result, "COMPLETE")
 	}
 	if run.Trigger != "PUSH" {
 		t.Errorf("Trigger = %q, want %q", run.Trigger, "PUSH")
 	}
-	if run.Repository.FullName != "myworkspace/my-repo" {
-		t.Errorf("Repository.FullName = %q, want %q", run.Repository.FullName, "myworkspace/my-repo")
+	// Real payloads omit pipeline.repository.full_name; use UUIDs instead.
+	if run.RepoUUID != "{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}" {
+		t.Errorf("RepoUUID = %q, want %q", run.RepoUUID, "{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}")
 	}
-	if run.Repository.Workspace.Slug != "myworkspace" {
-		t.Errorf("Repository.Workspace.Slug = %q, want %q", run.Repository.Workspace.Slug, "myworkspace")
+	if run.AccountUUID != "{ffffffff-0000-1111-2222-333333333333}" {
+		t.Errorf("AccountUUID = %q, want %q", run.AccountUUID, "{ffffffff-0000-1111-2222-333333333333}")
 	}
-	if run.Repository.Name != "my-repo" {
-		t.Errorf("Repository.Name = %q, want %q", run.Repository.Name, "my-repo")
+	// Repository fields are populated by the handler after API resolution, not by the parser.
+	if run.Repository.FullName != "" {
+		t.Errorf("Repository.FullName = %q, want empty (resolved by handler)", run.Repository.FullName)
 	}
-	if run.URL == "" {
-		t.Error("expected URL to be non-empty")
+	// URL comes directly from the pipeline_run.url span attribute.
+	wantURL := "https://bitbucket.org/%7Bffffffff%7D/%7Baaaaaaaa%7D/pipelines/results/5"
+	if run.URL != wantURL {
+		t.Errorf("URL = %q, want %q", run.URL, wantURL)
 	}
 }
 

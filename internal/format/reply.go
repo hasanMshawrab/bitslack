@@ -102,7 +102,7 @@ func formatPipelineRun(ev *event.PipelineRunEvent) string {
 
 func pipelineResultEmoji(result string) string {
 	switch result {
-	case stateSuccessful:
+	case "COMPLETE", stateSuccessful: // OTel uses COMPLETE; REST API uses SUCCESSFUL
 		return "✅"
 	case stateFailed:
 		return "❌"

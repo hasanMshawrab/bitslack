@@ -151,6 +151,16 @@ GET /repositories/{workspace}/{repo}/commit/{hash}/pullrequests
 
 `pipeline:span_created` delivers an OpenTelemetry trace. Only `bbc.pipeline_run` spans are processed; `bbc.pipeline_step`, `bbc.command`, and `bbc.container` spans are silently skipped.
 
+**Repository resolution:** Real Bitbucket OTel payloads omit `pipeline.repository.full_name` and only include `pipeline.repository.uuid` and `pipeline.account.uuid`. When `full_name` is absent, the handler resolves the repository via the Bitbucket API:
+```
+GET /repositories/{accountUUID}/{repoUUID}
+```
+The `account.uuid` is used as the workspace identifier (Bitbucket accepts UUIDs in place of slugs). The resolved `full_name` is then used for all subsequent channel and thread lookups.
+
+**Result values:** OTel `pipeline.state.result.name` uses different values than the REST API. The mapping is: `COMPLETE` → ✅, `FAILED` → ❌, `ERROR` → 🔴, `STOPPED` → ⏹. These differ from `repo:commit_status_*` which uses `SUCCESSFUL`/`FAILED`/`INPROGRESS`.
+
+**Run URL:** The `pipeline_run.url` span attribute is used directly as the link in the Slack message.
+
 PR linkage for pipeline events:
 - If `pipeline.target.ref_type = BRANCH`: call the Bitbucket API to find the open PR for that branch:
   ```
