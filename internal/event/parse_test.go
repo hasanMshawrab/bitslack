@@ -192,6 +192,47 @@ func TestParse_PullRequestCommentCreated(t *testing.T) {
 	}
 }
 
+func TestParse_PullRequestCommentCreated_ParentID(t *testing.T) {
+	payload := []byte(`{
+		"actor": {"nickname": "bob", "account_id": "acct-bob"},
+		"pullrequest": {"id": 7, "title": "PR", "state": "OPEN",
+			"author": {"nickname": "bob", "account_id": "acct-bob"},
+			"source": {"branch": {"name": "feat"}, "commit": {"hash": "abc"}, "repository": {}},
+			"destination": {"branch": {"name": "main"}, "commit": {"hash": "def"}, "repository": {}},
+			"links": {"html": {"href": "https://bitbucket.org/pr/7"}}},
+		"repository": {"full_name": "ws/repo", "name": "repo", "workspace": {"slug": "ws"}},
+		"comment": {
+			"id": 770172245,
+			"content": {"raw": "reply to message"},
+			"parent": {"id": 770164514},
+			"links": {"html": {"href": "https://bitbucket.org/comment/770172245"}}
+		}
+	}`)
+	evt, err := event.Parse(event.KeyPRCommentCreated, payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	c := evt.PullRequest.Comment
+	if c == nil {
+		t.Fatal("expected Comment to be non-nil")
+	}
+	if c.ParentID != 770164514 {
+		t.Errorf("Comment.ParentID = %d, want 770164514", c.ParentID)
+	}
+}
+
+func TestParse_PullRequestCommentCreated_TopLevelParentID(t *testing.T) {
+	// Existing comment_created fixture has no parent — ParentID should be 0.
+	payload := loadFixture(t, "pullrequest/comment_created.json")
+	evt, err := event.Parse(event.KeyPRCommentCreated, payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if evt.PullRequest.Comment.ParentID != 0 {
+		t.Errorf("Comment.ParentID = %d, want 0 for top-level comment", evt.PullRequest.Comment.ParentID)
+	}
+}
+
 func TestParse_CommitStatusCreated(t *testing.T) {
 	payload := loadFixture(t, "commit_status/created.json")
 	evt, err := event.Parse(event.KeyCommitStatusCreated, payload)

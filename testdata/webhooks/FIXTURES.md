@@ -62,10 +62,11 @@ PR state is `"DECLINED"`. Includes a `reason` field and `closed_by` (Bob). Use t
 - The actor is a reviewer, not the author (Bob declined Jane's PR)
 
 ### `pullrequest/comment_created.json`
-Includes an `inline` comment on `pkg/handler/handler.go` line 42. Bob's participant role has shifted to `"PARTICIPANT"` (not `"REVIEWER"`). Use this to test:
+Includes an `inline` comment on `pkg/handler/handler.go` line 42. Bob's participant role has shifted to `"PARTICIPANT"` (not `"REVIEWER"`). The `comment` object has no `parent` field, so `Comment.ParentID` will be `0` (top-level comment). Use this to test:
 - Comment event is posted as a thread reply
 - `comment.content.raw` is the plain text to surface; `html` can be ignored
 - Inline comments include a file path and line number — useful if the message links to the diff
+- `ParentID == 0` exercises the top-level comment path in `DistinguishCommentReplies` logic
 
 ### `commit_status/created.json`
 Build state is `"INPROGRESS"`. No PR ID in the payload — only commit hash `b7f6f6ef4c59`. Use this to test:

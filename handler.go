@@ -130,7 +130,7 @@ func (c *Client) handlePullRequestEvent(ctx context.Context, ev *event.Event) er
 	}
 
 	// All other events: post a thread reply.
-	replyText, err := format.Reply(ev, resolve)
+	replyText, err := format.Reply(ev, resolve, c.formatOpts)
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("bitslack: format reply for %s: %v", prKey, err))
 		return nil
@@ -199,7 +199,7 @@ func (c *Client) handleCommitStatusEvent(ctx context.Context, ev *event.Event) e
 	}
 
 	// Post the build status as a thread reply.
-	replyText, err := format.Reply(ev, resolve)
+	replyText, err := format.Reply(ev, resolve, c.formatOpts)
 	if err != nil {
 		c.logger.Error(fmt.Sprintf("bitslack: format reply for %s: %v", prKey, err))
 		return nil
@@ -238,7 +238,7 @@ func (c *Client) handlePipelineEvent(ctx context.Context, ev *event.Event) error
 		return nil
 	}
 
-	replyText, fmtErr := format.Reply(ev, userResolver(c.configStore))
+	replyText, fmtErr := format.Reply(ev, userResolver(c.configStore), c.formatOpts)
 	if fmtErr != nil {
 		c.logger.Error(fmt.Sprintf("bitslack: format pipeline reply for %s: %v", repoFullName, fmtErr))
 		return nil

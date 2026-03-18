@@ -9,12 +9,50 @@ import (
 const (
 	stateSuccessful = "SUCCESSFUL"
 	stateFailed     = "FAILED"
+
+	defaultCommentSummaryLength = 200
 )
+
+// CommentDisplay controls how much of a comment's body is shown in Slack.
+type CommentDisplay int
+
+const (
+	// CommentDisplayFull shows the entire comment content (default).
+	CommentDisplayFull CommentDisplay = iota
+	// CommentDisplaySummary truncates to Options.CommentSummaryLength display characters
+	// and appends "…".
+	CommentDisplaySummary
+	// CommentDisplayNone omits the comment body entirely.
+	CommentDisplayNone
+)
+
+// Options controls how Slack reply messages are rendered.
+// All fields are optional — zero values apply the defaults.
+type Options struct {
+	// DistinguishCommentReplies controls whether a reply to a comment is labelled
+	// differently from a top-level comment.
+	// false (default) → both show "💬 @user commented"
+	// true → top-level: "💬 @user commented", reply: "💬 @user replied to a comment"
+	DistinguishCommentReplies bool
+
+	// CommentContent controls how much of the comment body is included.
+	// Default: CommentDisplayFull
+	CommentContent CommentDisplay
+
+	// CommentSummaryLength is the maximum number of display characters shown
+	// when CommentContent == CommentDisplaySummary. Default: 200.
+	CommentSummaryLength int
+
+	// ShowCommentLink controls whether a "View comment" link is appended.
+	// false (default) → link omitted
+	// true → appended as "<url|View comment>"
+	ShowCommentLink bool
+}
 
 // Reply produces a plain-text reply string for the given event.
 // Note: KeyPRCreated and KeyPRUpdated are intentionally absent --
 // created is handled by the opening message, updated by chat.update.
-func Reply(ev *event.Event, resolve UserResolver) (string, error) {
+func Reply(ev *event.Event, resolve UserResolver, opts Options) (string, error) {
 	switch ev.Key {
 	case event.KeyPRApproved:
 		return formatApproved(ev.PullRequest, resolve), nil
@@ -25,7 +63,7 @@ func Reply(ev *event.Event, resolve UserResolver) (string, error) {
 	case event.KeyPRRejected:
 		return formatRejected(ev.PullRequest, resolve), nil
 	case event.KeyPRCommentCreated:
-		return formatCommentCreated(ev.PullRequest, resolve), nil
+		return formatCommentCreated(ev.PullRequest, resolve, opts), nil
 	case event.KeyCommitStatusCreated, event.KeyCommitStatusUpdated:
 		return formatCommitStatus(ev.CommitStatus), nil
 	case event.KeyPipelineSpanCreated:
@@ -55,22 +93,54 @@ func formatRejected(ev *event.PullRequestEvent, resolve UserResolver) string {
 	return msg
 }
 
-func formatCommentCreated(ev *event.PullRequestEvent, resolve UserResolver) string {
+func formatCommentCreated(ev *event.PullRequestEvent, resolve UserResolver, opts Options) string {
 	actor := mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve)
 	comment := ev.Comment
 	if comment == nil {
 		return fmt.Sprintf("💬 %s commented", actor)
 	}
 
-	var msg string
-	if comment.Inline != nil {
-		msg = fmt.Sprintf("💬 %s commented on `%s:%d`\n> %s\n%s",
-			actor, comment.Inline.Path, comment.Inline.To, comment.Content.Raw, comment.HTMLURL)
-	} else {
-		msg = fmt.Sprintf("💬 %s commented\n> %s\n%s",
-			actor, comment.Content.Raw, comment.HTMLURL)
+	// Determine action verb.
+	action := "commented"
+	if opts.DistinguishCommentReplies && comment.ParentID != 0 {
+		action = "replied to a comment"
 	}
-	return msg
+
+	// Build inline location suffix.
+	var location string
+	if comment.Inline != nil {
+		location = fmt.Sprintf(" on `%s:%d`", comment.Inline.Path, comment.Inline.To)
+	}
+
+	header := fmt.Sprintf("💬 %s %s%s", actor, action, location)
+
+	// Build content block.
+	var content string
+	switch opts.CommentContent {
+	case CommentDisplayFull:
+		content = "\n> " + comment.Content.Raw
+	case CommentDisplaySummary:
+		summaryLen := opts.CommentSummaryLength
+		if summaryLen <= 0 {
+			summaryLen = defaultCommentSummaryLength
+		}
+		runes := []rune(comment.Content.Raw)
+		if len(runes) > summaryLen {
+			content = "\n> " + string(runes[:summaryLen]) + "…"
+		} else {
+			content = "\n> " + comment.Content.Raw
+		}
+	case CommentDisplayNone:
+		// omit body
+	}
+
+	// Build link.
+	var link string
+	if opts.ShowCommentLink && comment.HTMLURL != "" {
+		link = fmt.Sprintf("\n<%s|View comment>", comment.HTMLURL)
+	}
+
+	return header + content + link
 }
 
 func formatCommitStatus(ev *event.CommitStatusEvent) string {

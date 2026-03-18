@@ -68,10 +68,11 @@ type InlineLocation struct {
 
 // Comment represents a PR comment.
 type Comment struct {
-	ID      int
-	Content CommentContent
-	Inline  *InlineLocation // nil for top-level comments
-	HTMLURL string
+	ID       int
+	Content  CommentContent
+	Inline   *InlineLocation // nil for top-level comments
+	ParentID int             // non-zero when this comment is a reply to another comment
+	HTMLURL  string
 }
 
 // Approval wraps the approval data on approved/unapproved events.

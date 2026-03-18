@@ -26,10 +26,47 @@ import (
 	"time"
 
 	"github.com/hasanMshawrab/bitslack/internal/bitbucket"
+	"github.com/hasanMshawrab/bitslack/internal/format"
 	"github.com/hasanMshawrab/bitslack/internal/slack"
 )
 
 const defaultHTTPTimeout = 10 * time.Second
+
+// CommentDisplay controls how much of a comment's body is shown in Slack.
+type CommentDisplay int
+
+const (
+	// CommentDisplayFull shows the entire comment content (default).
+	CommentDisplayFull CommentDisplay = iota
+	// CommentDisplaySummary truncates to FormatOptions.CommentSummaryLength display
+	// characters and appends "…".
+	CommentDisplaySummary
+	// CommentDisplayNone omits the comment body entirely.
+	CommentDisplayNone
+)
+
+// FormatOptions controls how Slack reply messages are rendered.
+// All fields are optional — zero values apply the defaults described below.
+type FormatOptions struct {
+	// DistinguishCommentReplies controls whether a reply to a comment is labelled
+	// differently from a top-level comment.
+	// false (default) → both show "💬 @user commented"
+	// true → top-level: "💬 @user commented", reply: "💬 @user replied to a comment"
+	DistinguishCommentReplies bool
+
+	// CommentContent controls how much of the comment body is included.
+	// Default: CommentDisplayFull — the full body is shown.
+	CommentContent CommentDisplay
+
+	// CommentSummaryLength is the maximum number of display characters shown
+	// when CommentContent == CommentDisplaySummary. Default: 200.
+	CommentSummaryLength int
+
+	// ShowCommentLink controls whether a "View comment" link is appended.
+	// false (default) → link omitted
+	// true → appended as "<url|View comment>"
+	ShowCommentLink bool
+}
 
 // EventFamily identifies a group of related Bitbucket webhook event keys.
 type EventFamily string
@@ -83,6 +120,10 @@ type Config struct {
 	// [EventFamilyPullRequest, EventFamilyPipeline] and omit EventFamilyCommitStatus
 	// to avoid duplicate notifications (Bitbucket Pipelines fires both).
 	EnabledEvents []EventFamily
+
+	// FormatOptions controls how Slack reply messages are rendered.
+	// All fields are optional — zero values produce the default behaviour.
+	FormatOptions FormatOptions
 }
 
 // Client is the bitslack engine. Safe for concurrent use.
@@ -93,6 +134,7 @@ type Client struct {
 	bbClient        *bitbucket.Client
 	slackClient     *slack.Client
 	enabledFamilies map[EventFamily]struct{}
+	formatOpts      format.Options
 }
 
 // New validates the config and constructs a Client.
@@ -137,11 +179,19 @@ func New(cfg Config) (*Client, error) {
 		enabledFamilies[f] = struct{}{}
 	}
 
+	fmtOpts := format.Options{
+		DistinguishCommentReplies: cfg.FormatOptions.DistinguishCommentReplies,
+		CommentContent:            format.CommentDisplay(cfg.FormatOptions.CommentContent),
+		CommentSummaryLength:      cfg.FormatOptions.CommentSummaryLength,
+		ShowCommentLink:           cfg.FormatOptions.ShowCommentLink,
+	}
+
 	return &Client{
 		threadStore:     cfg.ThreadStore,
 		configStore:     cfg.ConfigStore,
 		logger:          cfg.Logger,
 		enabledFamilies: enabledFamilies,
+		formatOpts:      fmtOpts,
 		bbClient: bitbucket.NewClient(
 			cfg.BitbucketBaseURL,
 			cfg.BitbucketUsername,

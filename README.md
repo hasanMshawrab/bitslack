@@ -45,10 +45,11 @@ import (
 
 func main() {
     client, err := bitslack.New(bitslack.Config{
-        SlackToken:     "xoxb-your-slack-bot-token",
-        BitbucketToken: "your-bitbucket-token",
-        ThreadStore:    myThreadStore,  // your implementation
-        ConfigStore:    myConfigStore,  // your implementation
+        SlackToken:        "xoxb-your-slack-bot-token",
+        BitbucketUsername: "user@example.com",          // Atlassian account email
+        BitbucketToken:    "your-bitbucket-token",
+        ThreadStore:       myThreadStore,               // your implementation
+        ConfigStore:       myConfigStore,               // your implementation
     })
     if err != nil {
         log.Fatal(err)
@@ -88,12 +89,12 @@ Could be backed by Redis, Memcached, a database, or an in-memory map.
 
 ### ConfigStore
 
-Provides two lookups: which Slack channel a repo posts to, and Bitbucket → Slack user mapping for @mentions.
+Provides two lookups: which Slack channel a repo posts to, and Bitbucket account ID → Slack user ID mapping for @mentions.
 
 ```go
 type ConfigStore interface {
     GetChannel(repo string) (channelID string, ok bool)
-    GetSlackUserID(username string) (slackID string, ok bool)
+    GetSlackUserID(accountID string) (slackID string, ok bool)
 }
 ```
 
@@ -115,14 +116,15 @@ type Logger interface {
 
 ```go
 bitslack.Config{
-    SlackToken:       "xoxb-...",                        // required
-    BitbucketToken:   "...",                              // required
-    ThreadStore:      myThreadStore,                      // required
-    ConfigStore:      myConfigStore,                      // required
-    Logger:           myLogger,                           // optional (defaults to no-op)
-    HTTPClient:       &http.Client{Timeout: 15*time.Second}, // optional (defaults to 10s)
-    BitbucketBaseURL: "https://api.bitbucket.org/2.0",   // optional (for testing)
-    SlackBaseURL:     "https://slack.com/api",            // optional (for testing)
+    SlackToken:        "xoxb-...",                           // required
+    BitbucketUsername: "user@example.com",                   // required (Atlassian account email)
+    BitbucketToken:    "...",                                // required
+    ThreadStore:       myThreadStore,                        // required
+    ConfigStore:       myConfigStore,                        // required
+    Logger:            myLogger,                             // optional (defaults to no-op)
+    HTTPClient:        &http.Client{Timeout: 15*time.Second}, // optional (defaults to 10s)
+    BitbucketBaseURL:  "https://api.bitbucket.org/2.0",     // optional (for testing)
+    SlackBaseURL:      "https://slack.com/api",              // optional (for testing)
 }
 ```
 

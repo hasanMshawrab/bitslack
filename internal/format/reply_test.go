@@ -21,7 +21,7 @@ func TestReply_Approved(t *testing.T) {
 			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestReply_Unapproved(t *testing.T) {
 			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestReply_Fulfilled(t *testing.T) {
 			Actor: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestReply_Rejected(t *testing.T) {
 			PullRequest: event.PullRequest{Reason: "needs more work"},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestReply_CommentCreated_Inline(t *testing.T) {
 			},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestReply_CommentCreated_TopLevel(t *testing.T) {
 			},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestReply_CommitStatusInProgress(t *testing.T) {
 			},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestReply_CommitStatusSuccessful(t *testing.T) {
 			},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestReply_CommitStatusFailed(t *testing.T) {
 			},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestReply_CommitStatusFailed(t *testing.T) {
 func TestReply_UnknownKey(t *testing.T) {
 	// Completely unknown key
 	ev := &event.Event{Key: "repo:push"}
-	_, err := format.Reply(ev, defaultResolver())
+	_, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err == nil {
 		t.Fatal("expected error for unknown key")
 	}
@@ -194,7 +194,7 @@ func TestReply_UnknownKey(t *testing.T) {
 		Key:         event.KeyPRCreated,
 		PullRequest: &event.PullRequestEvent{},
 	}
-	_, err2 := format.Reply(ev2, defaultResolver())
+	_, err2 := format.Reply(ev2, defaultResolver(), format.Options{})
 	if err2 == nil {
 		t.Fatal("expected error for KeyPRCreated")
 	}
@@ -204,7 +204,7 @@ func TestReply_UnknownKey(t *testing.T) {
 		Key:         event.KeyPRUpdated,
 		PullRequest: &event.PullRequestEvent{},
 	}
-	_, err3 := format.Reply(ev3, defaultResolver())
+	_, err3 := format.Reply(ev3, defaultResolver(), format.Options{})
 	if err3 == nil {
 		t.Fatal("expected error for KeyPRUpdated")
 	}
@@ -224,7 +224,7 @@ func TestReply_PipelineSuccessful(t *testing.T) {
 			},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestReply_PipelineFailed(t *testing.T) {
 			},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestReply_PipelineError(t *testing.T) {
 			PipelineRun: event.PipelineRun{Result: "ERROR", RefName: "main", URL: "https://example.com"},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,11 +276,148 @@ func TestReply_PipelineStopped(t *testing.T) {
 			PipelineRun: event.PipelineRun{Result: "STOPPED", RefName: "main", URL: "https://example.com"},
 		},
 	}
-	text, err := format.Reply(ev, defaultResolver())
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertContains(t, text, "⏹")
+}
+
+func TestReply_CommentCreated_ShowLink(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPRCommentCreated,
+		PullRequest: &event.PullRequestEvent{
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
+			Comment: &event.Comment{
+				Content: event.CommentContent{Raw: "looks good"},
+				HTMLURL: "https://bitbucket.org/comment/99",
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{ShowCommentLink: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "<https://bitbucket.org/comment/99|View comment>")
+	assertNotContains(t, text, "https://bitbucket.org/comment/99\n")
+}
+
+func TestReply_CommentCreated_HideLink(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPRCommentCreated,
+		PullRequest: &event.PullRequestEvent{
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
+			Comment: &event.Comment{
+				Content: event.CommentContent{Raw: "looks good"},
+				HTMLURL: "https://bitbucket.org/comment/99",
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{ShowCommentLink: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNotContains(t, text, "bitbucket.org")
+}
+
+func TestReply_CommentCreated_ReplyDistinguished(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPRCommentCreated,
+		PullRequest: &event.PullRequestEvent{
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
+			Comment: &event.Comment{
+				Content:  event.CommentContent{Raw: "thanks"},
+				ParentID: 770164514,
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{DistinguishCommentReplies: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "replied to a comment")
+	assertNotContains(t, text, "commented\n")
+}
+
+func TestReply_CommentCreated_TopLevelNotDistinguished(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPRCommentCreated,
+		PullRequest: &event.PullRequestEvent{
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
+			Comment: &event.Comment{
+				Content:  event.CommentContent{Raw: "lgtm"},
+				ParentID: 0, // top-level
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{DistinguishCommentReplies: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "commented")
+	assertNotContains(t, text, "replied")
+}
+
+func TestReply_CommentCreated_Summary(t *testing.T) {
+	longText := "This is a very long comment that should be truncated to the summary length"
+	ev := &event.Event{
+		Key: event.KeyPRCommentCreated,
+		PullRequest: &event.PullRequestEvent{
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
+			Comment: &event.Comment{
+				Content: event.CommentContent{Raw: longText},
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{
+		CommentContent:       format.CommentDisplaySummary,
+		CommentSummaryLength: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "…")
+	assertNotContains(t, text, longText)
+}
+
+func TestReply_CommentCreated_SummaryWithinLength(t *testing.T) {
+	shortText := "short"
+	ev := &event.Event{
+		Key: event.KeyPRCommentCreated,
+		PullRequest: &event.PullRequestEvent{
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
+			Comment: &event.Comment{
+				Content: event.CommentContent{Raw: shortText},
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{
+		CommentContent:       format.CommentDisplaySummary,
+		CommentSummaryLength: 200,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, shortText)
+	assertNotContains(t, text, "…")
+}
+
+func TestReply_CommentCreated_NoContent(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPRCommentCreated,
+		PullRequest: &event.PullRequestEvent{
+			Actor: event.User{Nickname: "bobreviewer", AccountID: "acct-bob"},
+			Comment: &event.Comment{
+				Content: event.CommentContent{Raw: "this should not appear"},
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{CommentContent: format.CommentDisplayNone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "💬")
+	assertNotContains(t, text, "this should not appear")
 }
 
 func TestReply_UnmappedActor(t *testing.T) {
@@ -291,7 +428,7 @@ func TestReply_UnmappedActor(t *testing.T) {
 		},
 	}
 	resolve := mapResolver(map[string]string{}) // empty
-	text, err := format.Reply(ev, resolve)
+	text, err := format.Reply(ev, resolve, format.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

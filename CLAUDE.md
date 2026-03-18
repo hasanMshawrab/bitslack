@@ -31,7 +31,7 @@ go test ./internal/... -run TestName  # Run a single test by name
 
 ```
 bitslack/
-├── bitslack.go          # Public API: Config struct, New() constructor, Client
+├── bitslack.go          # Public API: Config struct, FormatOptions, CommentDisplay, New() constructor, Client
 ├── adapter.go           # Interface definitions: ThreadStore, ConfigStore, Logger
 ├── handler.go           # Client.Handler(ctx, eventKey, payload) — core flow orchestration
 ├── handler_test.go      # Integration tests: full flow with mocks + httptest stubs
@@ -116,6 +116,20 @@ The opening message is a live document — it is edited (via `chat.update`) to s
 - `pullrequest:updated` — if the title or reviewer list changed, update the opening message in place
 - **Adding a reviewer** — edit the message to add their @mention; Slack will automatically notify them (no separate notification needed)
 - **Removing a reviewer** — edit the message to remove their @mention; Slack will not notify them of the removal. If they have not yet engaged with the thread (no reply, no click-through), they will stop receiving future thread notifications. If they have already engaged, Slack marks them as a thread follower and they will continue to receive updates regardless — this is a known Slack limitation.
+
+### Comment Formatting
+
+Comment reply formatting is controlled by `Config.FormatOptions` (`FormatOptions` struct):
+
+- **`DistinguishCommentReplies bool`** — when `true`, a comment that has a `parent.id` (i.e. a reply to another comment) is labelled `"replied to a comment"` instead of `"commented"`. Default `false` — both show `"commented"`.
+- **`CommentContent CommentDisplay`** — controls how much of the comment body is shown:
+  - `CommentDisplayFull` (default, 0) — full body shown as a blockquote
+  - `CommentDisplaySummary` — truncated to `CommentSummaryLength` runes with `…` appended
+  - `CommentDisplayNone` — body omitted entirely
+- **`CommentSummaryLength int`** — max rune count for summary mode. Zero uses the default (200).
+- **`ShowCommentLink bool`** — when `true`, appends `<url|View comment>` (Slack mrkdwn). Default `false` — no link.
+
+`Comment.ParentID` (parsed from `comment.parent.id` in the webhook payload) is `0` for top-level comments and non-zero for replies.
 
 ### Core Flow
 

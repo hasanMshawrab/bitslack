@@ -104,10 +104,15 @@ type wireInline struct {
 	To   int    `json:"to"`
 }
 
+type wireCommentParent struct {
+	ID int `json:"id"`
+}
+
 type wireComment struct {
 	ID      int                `json:"id"`
 	Content wireCommentContent `json:"content"`
 	Inline  *wireInline        `json:"inline"`
+	Parent  *wireCommentParent `json:"parent"`
 	Links   wireCommentLinks   `json:"links"`
 }
 
@@ -249,6 +254,9 @@ func parsePullRequestEvent(eventKey string, payload []byte) (*Event, error) {
 				Path: w.Comment.Inline.Path,
 				To:   w.Comment.Inline.To,
 			}
+		}
+		if w.Comment.Parent != nil {
+			c.ParentID = w.Comment.Parent.ID
 		}
 		evt.Comment = c
 	}
