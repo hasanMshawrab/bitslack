@@ -92,22 +92,10 @@ func (c *Client) handlePullRequestEvent(ctx context.Context, ev *event.Event) er
 
 	// Backfill: no existing thread — fetch PR details, post opening message.
 	if !found {
-		var pr *event.PullRequest
-		pr, err = c.bbClient.GetPullRequest(ctx, workspace, repoSlug, prID)
-		if err != nil {
-			c.logger.Error(fmt.Sprintf("bbthread: fetch PR %s#%d: %v", repoFullName, prID, err))
+		var backfillOK bool
+		ts, backfillOK = c.backfillPRThread(ctx, workspace, repoSlug, repoFullName, prID, prKey, channel, resolve)
+		if !backfillOK {
 			return nil
-		}
-
-		text, blocks := format.OpeningMessage(pr, resolve)
-		ts, err = c.slackClient.PostMessage(ctx, channel, "", text, blocks)
-		if err != nil {
-			c.logger.Error(fmt.Sprintf("bbthread: post opening message for %s: %v", prKey, err))
-			return nil
-		}
-
-		if storeErr := c.threadStore.Store(ctx, prKey, ts); storeErr != nil {
-			c.logger.Warn(fmt.Sprintf("bbthread: store thread ts for %s: %v", prKey, storeErr))
 		}
 		wasBackfilled = true
 	}
@@ -115,7 +103,8 @@ func (c *Client) handlePullRequestEvent(ctx context.Context, ev *event.Event) er
 	// Updated events: edit the opening message in place (no reply).
 	if ev.Key == event.KeyPRUpdated {
 		if !wasBackfilled {
-			text, blocks := format.OpeningMessage(&pre.PullRequest, resolve)
+			builds := c.fetchLatestPipeline(ctx, workspace, repoSlug, pre.PullRequest.Source.Branch.Name)
+			text, blocks := format.OpeningMessage(&pre.PullRequest, builds, resolve)
 			err = c.slackClient.UpdateMessage(ctx, channel, ts, text, blocks)
 			if err != nil {
 				c.logger.Error(fmt.Sprintf("bbthread: update opening message for %s: %v", prKey, err))
@@ -150,6 +139,33 @@ func (c *Client) handlePullRequestEvent(ctx context.Context, ev *event.Event) er
 	return nil
 }
 
+// backfillPRThread fetches full PR details, posts the opening message to Slack, and stores
+// the returned ts. Returns the ts and true on success; returns "", false and logs on any error.
+func (c *Client) backfillPRThread(
+	ctx context.Context,
+	workspace, repoSlug, repoFullName string,
+	prID int,
+	prKey, channel string,
+	resolve format.UserResolver,
+) (string, bool) {
+	pr, err := c.bbClient.GetPullRequest(ctx, workspace, repoSlug, prID)
+	if err != nil {
+		c.logger.Error(fmt.Sprintf("bbthread: fetch PR %s#%d: %v", repoFullName, prID, err))
+		return "", false
+	}
+	builds := c.fetchLatestPipeline(ctx, workspace, repoSlug, pr.Source.Branch.Name)
+	text, blocks := format.OpeningMessage(pr, builds, resolve)
+	ts, err := c.slackClient.PostMessage(ctx, channel, "", text, blocks)
+	if err != nil {
+		c.logger.Error(fmt.Sprintf("bbthread: post opening message for %s: %v", prKey, err))
+		return "", false
+	}
+	if storeErr := c.threadStore.Store(ctx, prKey, ts); storeErr != nil {
+		c.logger.Warn(fmt.Sprintf("bbthread: store thread ts for %s: %v", prKey, storeErr))
+	}
+	return ts, true
+}
+
 // refreshOpeningMessage fetches the latest PR state from Bitbucket and updates the opening message
 // in Slack to reflect current approval status.
 func (c *Client) refreshOpeningMessage(
@@ -166,7 +182,8 @@ func (c *Client) refreshOpeningMessage(
 		)
 		return
 	}
-	text, blocks := format.OpeningMessage(fullPR, resolve)
+	builds := c.fetchLatestPipeline(ctx, workspace, repoSlug, fullPR.Source.Branch.Name)
+	text, blocks := format.OpeningMessage(fullPR, builds, resolve)
 	if updateErr := c.slackClient.UpdateMessage(ctx, channel, ts, text, blocks); updateErr != nil {
 		c.logger.Error(fmt.Sprintf("bbthread: update opening message on approval for %s: %v", prKey, updateErr))
 	}
@@ -213,7 +230,8 @@ func (c *Client) handleCommitStatusEvent(ctx context.Context, ev *event.Event) e
 
 	// Backfill if no thread exists.
 	if !found {
-		text, blocks := format.OpeningMessage(pr, resolve)
+		builds := c.fetchLatestPipeline(ctx, workspace, repoSlug, pr.Source.Branch.Name)
+		text, blocks := format.OpeningMessage(pr, builds, resolve)
 		ts, err = c.slackClient.PostMessage(ctx, channel, "", text, blocks)
 		if err != nil {
 			c.logger.Error(fmt.Sprintf("bbthread: post opening message for %s: %v", prKey, err))
@@ -399,16 +417,20 @@ func (c *Client) postPipelineToLinkedPR(
 		return false
 	}
 
-	if !found {
-		// GetOpenPRForBranch uses the list endpoint which omits the reviewers field.
-		// Fetch the full PR details so the opening message includes reviewers.
-		fullPR, fetchErr := c.bbClient.GetPullRequest(ctx, workspace, repoSlug, pr.ID)
-		if fetchErr != nil {
-			c.logger.Error(fmt.Sprintf("bbthread: fetch PR %s#%d: %v", repoFullName, pr.ID, fetchErr))
-			return false
-		}
+	// GetOpenPRForBranch uses the list endpoint which omits the reviewers field.
+	// Fetch the full PR details so the opening message includes reviewers and
+	// so we can refresh the opening message with the latest build status after posting.
+	fullPR, fetchErr := c.bbClient.GetPullRequest(ctx, workspace, repoSlug, pr.ID)
+	if fetchErr != nil {
+		c.logger.Error(fmt.Sprintf("bbthread: fetch PR %s#%d: %v", repoFullName, pr.ID, fetchErr))
+		return false
+	}
 
-		text, blocks := format.OpeningMessage(fullPR, userResolver(c.configStore))
+	resolve := userResolver(c.configStore)
+	builds := c.fetchLatestPipeline(ctx, workspace, repoSlug, run.RefName)
+
+	if !found {
+		text, blocks := format.OpeningMessage(fullPR, builds, resolve)
 		ts, err = c.slackClient.PostMessage(ctx, channel, "", text, blocks)
 		if err != nil {
 			c.logger.Error(fmt.Sprintf("bbthread: post opening message for %s: %v", prKey, err))
@@ -422,7 +444,27 @@ func (c *Client) postPipelineToLinkedPR(
 	if _, err = c.slackClient.PostMessage(ctx, channel, ts, replyText, nil); err != nil {
 		c.logger.Error(fmt.Sprintf("bbthread: post pipeline reply for %s: %v", prKey, err))
 	}
+
+	if found {
+		// Refresh the opening message to show the latest build status.
+		text, blocks := format.OpeningMessage(fullPR, builds, resolve)
+		if updateErr := c.slackClient.UpdateMessage(ctx, channel, ts, text, blocks); updateErr != nil {
+			c.logger.Error(fmt.Sprintf("bbthread: update opening message for pipeline %s: %v", prKey, updateErr))
+		}
+	}
+
 	return true
+}
+
+// fetchLatestPipeline fetches the most recent pipeline run for a branch.
+// Returns nil on any error (403 for no pipeline access, or other failures) — caller omits the field.
+func (c *Client) fetchLatestPipeline(ctx context.Context, workspace, repoSlug, branch string) *event.LatestPipelineRun {
+	run, err := c.bbClient.GetLatestPipelineForBranch(ctx, workspace, repoSlug, branch)
+	if err != nil {
+		c.logger.Warn(fmt.Sprintf("bbthread: fetch latest pipeline for branch %q: %v", branch, err))
+		return nil
+	}
+	return run
 }
 
 // isApprovalEvent returns true for events that require refreshing the opening message.

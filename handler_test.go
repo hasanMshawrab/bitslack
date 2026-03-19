@@ -52,6 +52,11 @@ type testHarness struct {
 	pipelineStepsEmpty bool
 	// pipelineStepsFailure makes the /pipelines/*/steps/ endpoint return a 500 error.
 	pipelineStepsFailure bool
+
+	// pipelineListForbidden makes the /pipelines/?sort=... endpoint return a 403.
+	// Used to test graceful omission of the Builds field when the API token lacks
+	// read:pipeline:bitbucket scope.
+	pipelineListForbidden bool
 }
 
 func newHarness(t *testing.T) *testHarness {
@@ -149,16 +154,9 @@ func newBBMockHandler(h *testHarness) http.Handler {
 			return
 		}
 
-		// GET /repositories/{ws}/{repo}/pipelines/{uuid}/steps/
-		if strings.Contains(path, "/pipelines/") && strings.HasSuffix(path, "/steps/") {
-			serveBBPipelineSteps(h, w)
-			return
-		}
-
-		// GET /repositories/{ws}/{repo}/pipelines/{uuid} — pipeline details (creator)
-		if strings.Contains(path, "/pipelines/") && !strings.HasSuffix(path, "/steps/") {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, bbPipelineResponse())
+		// All /pipelines/ paths routed through a sub-handler.
+		if strings.Contains(path, "/pipelines/") {
+			serveBBPipelinePath(h, w, path)
 			return
 		}
 
@@ -189,6 +187,32 @@ func serveBBPRForBranch(h *testHarness, w http.ResponseWriter) {
 	default:
 		fmt.Fprint(w, bbCommitPRsResponse())
 	}
+}
+
+func serveBBPipelinePath(h *testHarness, w http.ResponseWriter, path string) {
+	if strings.HasSuffix(path, "/pipelines/") {
+		serveBBPipelineList(h, w)
+		return
+	}
+	if strings.HasSuffix(path, "/steps/") {
+		serveBBPipelineSteps(h, w)
+		return
+	}
+	// Single pipeline details (creator).
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, bbPipelineResponse())
+}
+
+func serveBBPipelineList(h *testHarness, w http.ResponseWriter) {
+	h.mu.Lock()
+	forbidden := h.pipelineListForbidden
+	h.mu.Unlock()
+	if forbidden {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, bbPipelineListResponse())
 }
 
 func serveBBPipelineSteps(h *testHarness, w http.ResponseWriter) {
@@ -340,6 +364,24 @@ func bbAllStepsStoppedResponse() string {
 				"name": "Test",
 				"state": {"name": "STOPPED"},
 				"duration_in_seconds": 0
+			}
+		]
+	}`
+}
+
+// bbPipelineListResponse returns a mock Bitbucket pipelines list API response with one SUCCESSFUL run.
+func bbPipelineListResponse() string {
+	return `{
+		"values": [
+			{
+				"build_number": 99,
+				"state": {
+					"name": "COMPLETED",
+					"result": {"name": "SUCCESSFUL"}
+				},
+				"links": {
+					"html": {"href": "https://bitbucket.org/myworkspace/my-repo/pipelines/results/99"}
+				}
 			}
 		]
 	}`
@@ -994,9 +1036,10 @@ func TestHandler_Pipeline_LinkedToPRExistingThread(t *testing.T) {
 	}
 	waitForPipeline()
 
+	// existing thread: 1 postMessage (reply) + 1 chat.update (opening message refresh with build status)
 	calls := h.getSlackCalls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 Slack call (reply), got %d: %+v", len(calls), calls)
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 Slack calls (reply + update), got %d: %+v", len(calls), calls)
 	}
 	if calls[0].Path != "/chat.postMessage" {
 		t.Errorf("expected /chat.postMessage, got %s", calls[0].Path)
@@ -1007,6 +1050,13 @@ func TestHandler_Pipeline_LinkedToPRExistingThread(t *testing.T) {
 	text, _ := calls[0].Body["text"].(string)
 	if !strings.Contains(text, "✅") {
 		t.Errorf("expected reply to contain ✅, got %q", text)
+	}
+	// chat.update refreshes the opening message
+	if calls[1].Path != "/chat.update" {
+		t.Errorf("call 1: expected /chat.update, got %s", calls[1].Path)
+	}
+	if ts, _ := calls[1].Body["ts"].(string); ts != "9999.0000" {
+		t.Errorf("expected ts=9999.0000 in chat.update, got %v", calls[1].Body["ts"])
 	}
 }
 
@@ -1128,9 +1178,10 @@ func TestHandler_Pipeline_StepBreakdownIncluded(t *testing.T) {
 	}
 	waitForPipeline()
 
+	// existing thread: 1 postMessage (reply) + 1 chat.update (opening message refresh)
 	calls := h.getSlackCalls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 Slack call (reply), got %d", len(calls))
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 Slack calls (reply + update), got %d", len(calls))
 	}
 	text, _ := calls[0].Body["text"].(string)
 
@@ -1169,9 +1220,10 @@ func TestHandler_Pipeline_StepsAPIFailure_StillPosts(t *testing.T) {
 	}
 	waitForPipeline()
 
+	// existing thread: 1 postMessage (header-only reply) + 1 chat.update (opening message refresh)
 	calls := h.getSlackCalls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 Slack call (header-only), got %d", len(calls))
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 Slack calls (reply + update), got %d", len(calls))
 	}
 	text, _ := calls[0].Body["text"].(string)
 	if !strings.Contains(text, "❌") {
@@ -1204,9 +1256,10 @@ func TestHandler_Pipeline_DebounceDeduplicate(t *testing.T) {
 	_ = h.Client.Handler(context.Background(), "pipeline:span_created", payload) // duplicate
 	waitForPipeline()
 
+	// existing thread: reply + chat.update = 2; duplicate is debounced so only 1 run processed
 	calls := h.getSlackCalls()
-	if len(calls) != 1 {
-		t.Errorf("expected 1 Slack call (debounced duplicate), got %d", len(calls))
+	if len(calls) != 2 {
+		t.Errorf("expected 2 Slack calls (reply + update, deduplicated), got %d", len(calls))
 	}
 }
 
@@ -1317,6 +1370,95 @@ func TestHandler_Pipeline_ManualStopNotSuppressedByDefault(t *testing.T) {
 	calls := h.getSlackCalls()
 	if len(calls) != 1 {
 		t.Errorf("expected 1 Slack call when suppression disabled, got %d", len(calls))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Builds field tests
+// ---------------------------------------------------------------------------
+
+func TestHandler_Approved_OpeningMessageContainsBuildsField(t *testing.T) {
+	// On pullrequest:approved, the opening message is refreshed via chat.update.
+	// The mock BB server returns a SUCCESSFUL pipeline run for the branch.
+	// Verify the builds field appears in the update body.
+	h := newHarness(t)
+	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
+	payload := loadFixture(t, "testdata/webhooks/pullrequest/approved.json")
+
+	err := h.Client.Handler(context.Background(), "pullrequest:approved", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+
+	calls := h.getSlackCalls()
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 Slack calls (reply + update), got %d: %+v", len(calls), calls)
+	}
+	// The chat.update call should contain the Builds field in blocks.
+	blocksJSON, _ := json.Marshal(calls[1].Body["blocks"])
+	if !strings.Contains(string(blocksJSON), "Builds") {
+		t.Errorf("opening message update should contain Builds field, got %s", blocksJSON)
+	}
+	if !strings.Contains(string(blocksJSON), "passed") {
+		t.Errorf("opening message update should show passed status, got %s", blocksJSON)
+	}
+}
+
+func TestHandler_Pipeline_OpeningMessageContainsBuildsField(t *testing.T) {
+	// When a pipeline event links to an existing PR thread, the opening message
+	// is refreshed via chat.update and should include the Builds field.
+	h := newPipelineHarness(t)
+	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
+	payload := loadFixture(t, "testdata/webhooks/pipeline/span_created_successful.json")
+
+	err := h.Client.Handler(context.Background(), "pipeline:span_created", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+	waitForPipeline()
+
+	calls := h.getSlackCalls()
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 Slack calls (reply + update), got %d: %+v", len(calls), calls)
+	}
+	blocksJSON, _ := json.Marshal(calls[1].Body["blocks"])
+	if !strings.Contains(string(blocksJSON), "Builds") {
+		t.Errorf("opening message update should contain Builds field, got %s", blocksJSON)
+	}
+}
+
+func TestHandler_Approved_BuildsFieldOmitted_WhenPipelineAPI403(t *testing.T) {
+	// When the pipeline list API returns 403 (no read:pipeline:bitbucket scope),
+	// the Builds field is omitted and processing continues normally.
+	h := newHarness(t)
+	h.pipelineListForbidden = true
+	h.ThreadStore.Seed("myworkspace/my-repo:42", "9999.0000")
+	payload := loadFixture(t, "testdata/webhooks/pullrequest/approved.json")
+
+	err := h.Client.Handler(context.Background(), "pullrequest:approved", payload)
+	if err != nil {
+		t.Fatalf("Handler returned error: %v", err)
+	}
+
+	// Should still produce reply + update despite the 403.
+	calls := h.getSlackCalls()
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 Slack calls, got %d: %+v", len(calls), calls)
+	}
+	// Update should not contain Builds field.
+	blocksJSON, _ := json.Marshal(calls[1].Body["blocks"])
+	if strings.Contains(string(blocksJSON), "Builds") {
+		t.Errorf("opening message should not contain Builds field on 403, got %s", blocksJSON)
+	}
+	// Should have logged a warning about the pipeline API failure.
+	found := false
+	for _, msg := range h.Logger.WarnMsgs {
+		if strings.Contains(msg, "fetch latest pipeline") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected warn about pipeline fetch failure, got warns: %v", h.Logger.WarnMsgs)
 	}
 }
 

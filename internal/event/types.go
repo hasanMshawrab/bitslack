@@ -175,6 +175,14 @@ type PipelineRunEvent struct {
 	Creator     *User // nil if unavailable
 }
 
+// LatestPipelineRun holds the minimum fields needed to render the *Builds:* field
+// in the PR opening message. Populated by the Bitbucket pipelines list API.
+type LatestPipelineRun struct {
+	RunNumber int
+	Result    string // REST API values: SUCCESSFUL, FAILED, ERROR, STOPPED, IN_PROGRESS, PENDING
+	URL       string
+}
+
 // Event is a discriminated union of all event families.
 // Exactly one of PullRequest, CommitStatus, or Pipeline is non-nil after Parse
 // (Pipeline may be nil for non-pipeline_run span types).

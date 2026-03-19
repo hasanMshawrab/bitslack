@@ -36,7 +36,7 @@ func TestOpeningMessage_WithMappedUsers(t *testing.T) {
 		"acct-bob":  "U002BOB",
 	})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	assertContains(t, rendered, "<@U001JANE>")
@@ -68,7 +68,7 @@ func TestOpeningMessage_WithUnmappedUsers(t *testing.T) {
 	}
 	resolve := mapResolver(map[string]string{}) // empty — no mappings
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	// Unmapped users get Bitbucket profile links instead of @nickname.
@@ -105,7 +105,7 @@ func TestOpeningMessage_MultipleReviewers(t *testing.T) {
 		"acct-alice": "U003ALICE",
 	})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	assertContains(t, rendered, "<@U002BOB>")
@@ -130,7 +130,7 @@ func TestOpeningMessage_NoReviewers(t *testing.T) {
 	}
 	resolve := mapResolver(map[string]string{"acct-jane": "U001JANE"})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	assertNotContains(t, rendered, "Reviewers:")
@@ -160,7 +160,7 @@ func TestOpeningMessage_PartialMapping(t *testing.T) {
 		"acct-bob":  "U002BOB",
 	})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	assertContains(t, rendered, "<@U002BOB>")
@@ -198,7 +198,7 @@ func TestOpeningMessage_ApprovedReviewerCheckmark(t *testing.T) {
 		"acct-carol": "U003CAROL",
 	})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	// Bob approved — should show ✅ before his mention
@@ -236,7 +236,7 @@ func TestOpeningMessage_AlsoApproved(t *testing.T) {
 		"acct-dave": "U004DAVE",
 	})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	assertContains(t, rendered, "*Also approved:*")
@@ -269,7 +269,7 @@ func TestOpeningMessage_NoAlsoApproved_WhenNoParticipantApproval(t *testing.T) {
 		"acct-bob":  "U002BOB",
 	})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	assertNotContains(t, rendered, "*Also approved:*")
@@ -293,7 +293,7 @@ func TestOpeningMessage_ClickUpTicket(t *testing.T) {
 	}
 	resolve := mapResolver(map[string]string{"acct-jane": "U001JANE"})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	assertContains(t, rendered, "*Ticket:* <https://app.clickup.com/t/abc123def|View Ticket>")
@@ -319,7 +319,7 @@ func TestOpeningMessage_ClickUpTicket_MarkdownLink(t *testing.T) {
 	}
 	resolve := mapResolver(map[string]string{"acct-jane": "U001JANE"})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	assertContains(t, rendered, "*Ticket:* <https://app.clickup.com/t/zz9876xy|View Ticket>")
@@ -343,7 +343,7 @@ func TestOpeningMessage_NoTicket_WhenNoClickUpURL(t *testing.T) {
 	}
 	resolve := mapResolver(map[string]string{"acct-jane": "U001JANE"})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	rendered := blocksToText(blocks)
 
 	assertNotContains(t, rendered, "*Ticket:*")
@@ -367,7 +367,7 @@ func TestOpeningMessage_HeaderFormat(t *testing.T) {
 	}
 	resolve := mapResolver(map[string]string{})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	// Header is the first block
 	if len(blocks) == 0 || blocks[0].Text == nil {
 		t.Fatal("expected at least one block with text")
@@ -403,13 +403,107 @@ func TestOpeningMessage_LinkedRepoName(t *testing.T) {
 	}
 	resolve := mapResolver(map[string]string{})
 
-	_, blocks := format.OpeningMessage(pr, resolve)
+	_, blocks := format.OpeningMessage(pr, nil, resolve)
 	if len(blocks) == 0 || blocks[0].Text == nil {
 		t.Fatal("expected at least one block with text")
 	}
 	header := blocks[0].Text.Text
 	// Repo name in header is a Slack mrkdwn link.
 	assertContains(t, header, "[<https://bitbucket.org/myworkspace/payments-api|payments-api>]")
+}
+
+func basePR() *event.PullRequest {
+	return &event.PullRequest{
+		ID:     1,
+		Title:  "Add feature X",
+		State:  "OPEN",
+		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
+		Source: event.Endpoint{
+			Branch:     event.Branch{Name: "feature/add-x"},
+			Repository: event.Repository{Name: "my-repo"},
+		},
+		Destination: event.Endpoint{
+			Branch:     event.Branch{Name: "main"},
+			Repository: event.Repository{Name: "my-repo"},
+		},
+		HTMLURL: "https://bitbucket.org/myworkspace/my-repo/pull-requests/1",
+	}
+}
+
+func TestOpeningMessage_Builds_Successful(t *testing.T) {
+	builds := &event.LatestPipelineRun{
+		RunNumber: 42,
+		Result:    "SUCCESSFUL",
+		URL:       "https://bitbucket.org/myworkspace/my-repo/pipelines/results/42",
+	}
+	_, blocks := format.OpeningMessage(basePR(), builds, mapResolver(map[string]string{}))
+	rendered := blocksToText(blocks)
+	assertContains(t, rendered, "*Builds:*")
+	assertContains(t, rendered, "✅")
+	assertContains(t, rendered, "<https://bitbucket.org/myworkspace/my-repo/pipelines/results/42|#42>")
+	assertContains(t, rendered, "passed")
+}
+
+func TestOpeningMessage_Builds_Failed(t *testing.T) {
+	builds := &event.LatestPipelineRun{RunNumber: 7, Result: "FAILED", URL: "https://bb.example.com/pipelines/7"}
+	_, blocks := format.OpeningMessage(basePR(), builds, mapResolver(map[string]string{}))
+	rendered := blocksToText(blocks)
+	assertContains(t, rendered, "❌")
+	assertContains(t, rendered, "failed")
+}
+
+func TestOpeningMessage_Builds_Error(t *testing.T) {
+	builds := &event.LatestPipelineRun{RunNumber: 3, Result: "ERROR", URL: "https://bb.example.com/pipelines/3"}
+	_, blocks := format.OpeningMessage(basePR(), builds, mapResolver(map[string]string{}))
+	rendered := blocksToText(blocks)
+	assertContains(t, rendered, "🔴")
+	assertContains(t, rendered, "error")
+}
+
+func TestOpeningMessage_Builds_Stopped(t *testing.T) {
+	builds := &event.LatestPipelineRun{RunNumber: 5, Result: "STOPPED", URL: "https://bb.example.com/pipelines/5"}
+	_, blocks := format.OpeningMessage(basePR(), builds, mapResolver(map[string]string{}))
+	rendered := blocksToText(blocks)
+	assertContains(t, rendered, "⏹")
+	assertContains(t, rendered, "stopped")
+}
+
+func TestOpeningMessage_Builds_InProgress(t *testing.T) {
+	builds := &event.LatestPipelineRun{RunNumber: 9, Result: "IN_PROGRESS", URL: "https://bb.example.com/pipelines/9"}
+	_, blocks := format.OpeningMessage(basePR(), builds, mapResolver(map[string]string{}))
+	rendered := blocksToText(blocks)
+	assertContains(t, rendered, "🔄")
+	assertContains(t, rendered, "running")
+}
+
+func TestOpeningMessage_Builds_Pending(t *testing.T) {
+	builds := &event.LatestPipelineRun{RunNumber: 1, Result: "PENDING", URL: "https://bb.example.com/pipelines/1"}
+	_, blocks := format.OpeningMessage(basePR(), builds, mapResolver(map[string]string{}))
+	rendered := blocksToText(blocks)
+	assertContains(t, rendered, "⏳")
+	assertContains(t, rendered, "pending")
+}
+
+func TestOpeningMessage_Builds_Nil_OmitsField(t *testing.T) {
+	_, blocks := format.OpeningMessage(basePR(), nil, mapResolver(map[string]string{}))
+	rendered := blocksToText(blocks)
+	assertNotContains(t, rendered, "*Builds:*")
+}
+
+func TestOpeningMessage_Builds_PositionBetweenStatusAndAuthor(t *testing.T) {
+	builds := &event.LatestPipelineRun{RunNumber: 10, Result: "SUCCESSFUL", URL: "https://bb.example.com/pipelines/10"}
+	_, blocks := format.OpeningMessage(basePR(), builds, mapResolver(map[string]string{}))
+	rendered := blocksToText(blocks)
+	statusIdx := strings.Index(rendered, "*Status:*")
+	buildsIdx := strings.Index(rendered, "*Builds:*")
+	authorIdx := strings.Index(rendered, "*Author:*")
+	if statusIdx == -1 || buildsIdx == -1 || authorIdx == -1 {
+		t.Fatalf("missing field: status=%d, builds=%d, author=%d", statusIdx, buildsIdx, authorIdx)
+	}
+	if statusIdx >= buildsIdx || buildsIdx >= authorIdx {
+		t.Errorf("expected Status < Builds < Author order, got positions status=%d, builds=%d, author=%d",
+			statusIdx, buildsIdx, authorIdx)
+	}
 }
 
 // helpers

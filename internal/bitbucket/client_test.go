@@ -407,3 +407,122 @@ func TestGetPipelineSteps_ServerError(t *testing.T) {
 		t.Fatal("expected error for 500 response")
 	}
 }
+
+const cannedPipelineListSuccessfulJSON = `{
+  "values": [
+    {
+      "build_number": 42,
+      "state": {
+        "name": "COMPLETED",
+        "result": {"name": "SUCCESSFUL"}
+      },
+      "links": {
+        "html": {"href": "https://bitbucket.org/myworkspace/my-repo/pipelines/results/42"}
+      }
+    }
+  ]
+}`
+
+const cannedPipelineListInProgressJSON = `{
+  "values": [
+    {
+      "build_number": 7,
+      "state": {
+        "name": "IN_PROGRESS"
+      },
+      "links": {
+        "html": {"href": "https://bitbucket.org/myworkspace/my-repo/pipelines/results/7"}
+      }
+    }
+  ]
+}`
+
+func TestGetLatestPipelineForBranch_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repositories/myworkspace/my-repo/pipelines/" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("sort") != "-created_on" {
+			t.Errorf("expected sort=-created_on, got %q", r.URL.Query().Get("sort"))
+		}
+		if r.URL.Query().Get("pagelen") != "1" {
+			t.Errorf("expected pagelen=1, got %q", r.URL.Query().Get("pagelen"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(cannedPipelineListSuccessfulJSON))
+	}))
+	defer srv.Close()
+
+	client := bitbucket.NewClient(srv.URL, "test-user", "test-token", bitbucket.WithHTTPClient(srv.Client()))
+	run, err := client.GetLatestPipelineForBranch(context.Background(), "myworkspace", "my-repo", "feature/x")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected non-nil run")
+	}
+	if run.RunNumber != 42 {
+		t.Errorf("RunNumber = %d, want 42", run.RunNumber)
+	}
+	if run.Result != "SUCCESSFUL" {
+		t.Errorf("Result = %q, want SUCCESSFUL", run.Result)
+	}
+	if run.URL != "https://bitbucket.org/myworkspace/my-repo/pipelines/results/42" {
+		t.Errorf("URL = %q, want pipeline URL", run.URL)
+	}
+}
+
+func TestGetLatestPipelineForBranch_InProgress(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(cannedPipelineListInProgressJSON))
+	}))
+	defer srv.Close()
+
+	client := bitbucket.NewClient(srv.URL, "test-user", "test-token", bitbucket.WithHTTPClient(srv.Client()))
+	run, err := client.GetLatestPipelineForBranch(context.Background(), "myworkspace", "my-repo", "feature/x")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected non-nil run")
+	}
+	if run.Result != "IN_PROGRESS" {
+		t.Errorf("Result = %q, want IN_PROGRESS", run.Result)
+	}
+}
+
+func TestGetLatestPipelineForBranch_Empty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"values":[]}`))
+	}))
+	defer srv.Close()
+
+	client := bitbucket.NewClient(srv.URL, "test-user", "test-token", bitbucket.WithHTTPClient(srv.Client()))
+	run, err := client.GetLatestPipelineForBranch(context.Background(), "myworkspace", "my-repo", "feature/x")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if run != nil {
+		t.Errorf("expected nil run for empty list, got %+v", run)
+	}
+}
+
+func TestGetLatestPipelineForBranch_Forbidden(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	client := bitbucket.NewClient(srv.URL, "test-user", "test-token", bitbucket.WithHTTPClient(srv.Client()))
+	run, err := client.GetLatestPipelineForBranch(context.Background(), "myworkspace", "my-repo", "feature/x")
+	if err == nil {
+		t.Fatal("expected error for 403 response")
+	}
+	if run != nil {
+		t.Errorf("expected nil run on error, got %+v", run)
+	}
+}
