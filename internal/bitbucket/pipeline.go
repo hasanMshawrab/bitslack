@@ -8,6 +8,60 @@ import (
 	"github.com/hasanMshawrab/bbthread/internal/event"
 )
 
+// pipelineListItemWire is the wire type for a single entry in the pipelines list API.
+type pipelineListItemWire struct {
+	BuildNumber int `json:"build_number"`
+	State       struct {
+		Name   string `json:"name"`
+		Result *struct {
+			Name string `json:"name"`
+		} `json:"result"`
+	} `json:"state"`
+	Links struct {
+		HTML struct {
+			Href string `json:"href"`
+		} `json:"html"`
+	} `json:"links"`
+}
+
+// pipelineListWire is the wire type for the Bitbucket pipelines list API response.
+type pipelineListWire struct {
+	Values []pipelineListItemWire `json:"values"`
+}
+
+// GetLatestPipelineForBranch fetches the most recent pipeline run for the given branch.
+// Returns nil, nil if no runs exist. Returns an error on API failure (including 403).
+func (c *Client) GetLatestPipelineForBranch(
+	ctx context.Context,
+	workspace, repo, branch string,
+) (*event.LatestPipelineRun, error) {
+	params := url.Values{}
+	params.Set("sort", "-created_on")
+	params.Set("pagelen", "1")
+	params.Set("target.branch", branch)
+	path := fmt.Sprintf("/repositories/%s/%s/pipelines/?%s", workspace, repo, params.Encode())
+
+	var raw pipelineListWire
+	if err := c.get(ctx, path, &raw); err != nil {
+		return nil, err
+	}
+	if len(raw.Values) == 0 {
+		return nil, nil //nolint:nilnil // nil signals "no runs found"; caller handles gracefully
+	}
+
+	item := raw.Values[0]
+	result := item.State.Name
+	if item.State.Result != nil && item.State.Result.Name != "" {
+		result = item.State.Result.Name
+	}
+
+	return &event.LatestPipelineRun{
+		RunNumber: item.BuildNumber,
+		Result:    result,
+		URL:       item.Links.HTML.Href,
+	}, nil
+}
+
 // pipelineWire is the wire type for a Bitbucket pipeline API response (partial).
 type pipelineWire struct {
 	Creator struct {

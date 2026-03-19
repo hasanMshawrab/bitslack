@@ -46,8 +46,13 @@ func alsoApprovedParticipants(participants []event.Participant) []event.Particip
 }
 
 // OpeningMessage produces Block Kit blocks for the PR opening message.
+// builds is the latest pipeline run for the PR's source branch; pass nil to omit the Builds field.
 // Returns a plain-text fallback string and structured blocks.
-func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slack.Block) {
+func OpeningMessage(
+	pr *event.PullRequest,
+	builds *event.LatestPipelineRun,
+	resolve UserResolver,
+) (string, []slack.Block) {
 	repoName := pr.Source.Repository.Name
 	repoURL := pr.Source.Repository.HTMLURL
 	if repoName == "" {
@@ -80,6 +85,9 @@ func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slac
 	var fields []string
 	fields = append(fields, fmt.Sprintf("*Title:* %s", pr.Title))
 	fields = append(fields, fmt.Sprintf("*Status:* %s", prStateLabel(pr.State)))
+	if builds != nil {
+		fields = append(fields, fmt.Sprintf("*Builds:* %s", formatBuilds(builds)))
+	}
 	fields = append(
 		fields,
 		fmt.Sprintf("*Author:* %s", mention(pr.Author.AccountID, displayNameOf(pr.Author), resolve)),
@@ -129,6 +137,27 @@ func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slac
 	fallback := fmt.Sprintf("%s | %s", pr.Title, repoName)
 
 	return fallback, blocks
+}
+
+// formatBuilds renders the *Builds:* field value for a pipeline run.
+func formatBuilds(b *event.LatestPipelineRun) string {
+	link := fmt.Sprintf("<%s|#%d>", b.URL, b.RunNumber)
+	switch b.Result {
+	case "SUCCESSFUL":
+		return fmt.Sprintf("✅ %s passed", link)
+	case "FAILED":
+		return fmt.Sprintf("❌ %s failed", link)
+	case "ERROR":
+		return fmt.Sprintf("🔴 %s error", link)
+	case "STOPPED":
+		return fmt.Sprintf("⏹ %s stopped", link)
+	case "IN_PROGRESS":
+		return fmt.Sprintf("🔄 %s running", link)
+	case "PENDING":
+		return fmt.Sprintf("⏳ %s pending", link)
+	default:
+		return link
+	}
 }
 
 // prStateLabel maps Bitbucket PR states to display strings.

@@ -113,6 +113,7 @@ The `[{repo}]` prefix is hyperlinked to the Bitbucket repository page when the U
 ```
 *Title:* {pr title}
 *Status:* Open | Merged | Closed
+*Builds:* {emoji} <url|#N> {result text}               ← only when pipeline API returns a run
 *Author:* {mention}
 *Reviewers:* ✅ {approved mention} • {pending mention}   ← ✅ only for approved reviewers
 *Also approved:* {mention}                               ← only when non-reviewer participants approved
@@ -120,6 +121,7 @@ The `[{repo}]` prefix is hyperlinked to the Bitbucket repository page when the U
 ```
 
 - `*Repository:*` labeled field is omitted — the repo name is embedded in the header.
+- `*Builds:*` shows the most recent pipeline run for the PR's source branch, fetched via `GET /repositories/{workspace}/{repo}/pipelines/?sort=-created_on&pagelen=1&target.branch="{branch}"`. Omitted when the API call fails (e.g. 403 when `read:pipeline:bitbucket` scope is absent) — soft Warn log, no interruption to other fields. Result mapping: `SUCCESSFUL` → `✅ passed`, `FAILED` → `❌ failed`, `ERROR` → `🔴 error`, `STOPPED` → `⏹ stopped`, `IN_PROGRESS` → `🔄 running`, `PENDING` → `⏳ pending`.
 - Each reviewer shows `✅` if they appear in `participants` with `role="REVIEWER"` and `approved=true`; plain name otherwise.
 - `*Also approved:*` lists participants with `role="PARTICIPANT"` and `approved=true`. Omitted when no such participants exist.
 - `*Ticket:*` is shown only when the PR description contains a `https://app.clickup.com/t/…` URL. The first match is used.
@@ -127,11 +129,12 @@ The `[{repo}]` prefix is hyperlinked to the Bitbucket repository page when the U
 
 ### Opening Message Updates
 
-The opening message is a live document — it is edited (via `chat.update`) to stay in sync with PR state changes:
+The opening message is a live document — it is edited (via `chat.update`) to stay in sync with PR state changes. Every `chat.update` also refreshes the `*Builds:*` field by calling the pipelines list API for the PR's source branch.
 
 - `pullrequest:updated` — if the title or reviewer list changed, update the opening message in place
 - `pullrequest:approved` / `pullrequest:unapproved` — after posting the thread reply, fetch the full PR from the Bitbucket API (`GET /repositories/{workspace}/{repo}/pullrequests/{id}`) and re-render the opening message to reflect current approval state. Fetching from the API is required because the webhook payload only contains the single approval actor, not the full participant list.
 - `pullrequest:fulfilled` / `pullrequest:rejected` — after posting the thread reply, fetch the full PR and call `chat.update` to flip `*Status:*` to `Merged` or `Closed`.
+- `pipeline:span_created` (linked to a PR) — after posting the pipeline reply, fetch the full PR and call `chat.update` to refresh the opening message with the latest build result.
 - **Adding a reviewer** — edit the message to add their @mention; Slack will automatically notify them (no separate notification needed)
 - **Removing a reviewer** — edit the message to remove their @mention; Slack will not notify them of the removal. If they have not yet engaged with the thread (no reply, no click-through), they will stop receiving future thread notifications. If they have already engaged, Slack marks them as a thread follower and they will continue to receive updates regardless — this is a known Slack limitation.
 
@@ -272,7 +275,7 @@ client := bbthread.New(bbthread.Config{
 ```
 
 - **Slack**: Bot token (`xoxb-...`). Required OAuth scopes: `chat:write`. Add `chat:write.public` if the bot needs to post to channels it hasn't been explicitly invited to.
-- **Bitbucket**: Atlassian API token with `read:repository:bitbucket` and `read:pullrequest:bitbucket` scopes (add `read:pipeline:bitbucket` if using `EventFamilyPipeline`). Uses HTTP Basic auth (username + token).
+- **Bitbucket**: Atlassian API token with `read:repository:bitbucket` and `read:pullrequest:bitbucket` scopes. Add `read:pipeline:bitbucket` to populate the `*Builds:*` field in the opening message and to use `EventFamilyPipeline`. Without this scope the Builds field is silently omitted; all other functionality is unaffected. Uses HTTP Basic auth (username + token).
 
 ### Testing Strategy
 

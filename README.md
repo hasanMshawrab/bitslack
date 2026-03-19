@@ -20,6 +20,7 @@ Bitbucket webhooks fire individual events with no threading. If your team uses S
 - Backfills opening messages for PRs that predate the integration
 - Updates the opening message when PR title or reviewers change
 - Shows live approval status: ✅ checkmark per reviewer, separate "Also approved" line for non-reviewer approvers
+- Shows latest pipeline build status in the opening message (`*Builds:*` field, refreshed on every update)
 - Extracts ClickUp ticket links from PR descriptions and surfaces them in the opening message
 - Resolves build status events (commit hash → PR) via the Bitbucket API
 - Maps Bitbucket account IDs to Slack @mentions; falls back to a Bitbucket profile link for unmapped users
@@ -173,10 +174,10 @@ See [SETUP.md](SETUP.md) for step-by-step instructions on:
 1. Your server receives a Bitbucket webhook and passes the event key + payload to `client.Handler()`
 2. The library parses the event and identifies the PR
 3. It looks up the Slack thread timestamp for that PR via `ThreadStore`
-4. If no thread exists, it fetches the full PR from the Bitbucket API and posts an opening message showing: a hyperlinked `[repo-name]` + PR number in a header, then title, status (Open/Merged/Closed), author, reviewers (with ✅ for each approver), non-reviewer approvers, and ClickUp ticket link if present
+4. If no thread exists, it fetches the full PR from the Bitbucket API and posts an opening message showing: a hyperlinked `[repo-name]` + PR number in a header, then title, status (Open/Merged/Closed), latest pipeline build status (if `read:pipeline:bitbucket` scope is present), author, reviewers (with ✅ for each approver), non-reviewer approvers, and ClickUp ticket link if present
 5. It posts the event as a threaded reply
 
-For `pullrequest:updated`, the opening message is edited in place (title/reviewer changes). For `pullrequest:approved` and `pullrequest:unapproved`, a reply is posted and then the opening message is refreshed with current approval state. For `pullrequest:fulfilled` and `pullrequest:rejected`, a reply is posted and then `*Status:*` is updated to `Merged` or `Closed`. For build status events, the library resolves the commit hash to a PR via the Bitbucket API. For pipeline events, the message includes a `Triggered by` line showing who started the pipeline run (fetched via the Bitbucket pipelines API).
+For `pullrequest:updated`, the opening message is edited in place (title/reviewer changes). For `pullrequest:approved` and `pullrequest:unapproved`, a reply is posted and then the opening message is refreshed with current approval state. For `pullrequest:fulfilled` and `pullrequest:rejected`, a reply is posted and then `*Status:*` is updated to `Merged` or `Closed`. Every opening message update also refreshes the `*Builds:*` field. For build status events, the library resolves the commit hash to a PR via the Bitbucket API. For pipeline events, the message includes a `Triggered by` line and the opening message is updated with the latest build result.
 
 ## Development
 

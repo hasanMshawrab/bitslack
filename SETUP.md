@@ -52,7 +52,7 @@ The ID looks like `U08XXXXXXXXX`.
 3. When prompted to select scopes, enable the following under **Read**:
    - `read:repository:bitbucket` — required for all event families
    - `read:pullrequest:bitbucket` — required for all event families
-   - `read:pipeline:bitbucket` — required only if you enable `EventFamilyPipeline`
+   - `read:pipeline:bitbucket` — required to populate the `*Builds:*` field in the opening message, and to use `EventFamilyPipeline`; without it the Builds field is silently omitted
 4. Copy the token immediately — it will not be shown again
 
 > **Note:** API tokens use HTTP Basic auth with your Atlassian account email as the username.
