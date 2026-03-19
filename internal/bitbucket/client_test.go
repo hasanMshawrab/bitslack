@@ -417,7 +417,8 @@ const cannedPipelineListSuccessfulJSON = `{
         "result": {"name": "SUCCESSFUL"}
       },
       "links": {
-        "html": {"href": "https://bitbucket.org/myworkspace/my-repo/pipelines/results/42"}
+        "self": {"href": "https://api.bitbucket.org/2.0/repositories/myworkspace/my-repo/pipelines/42"},
+        "steps": {"href": "https://api.bitbucket.org/2.0/repositories/myworkspace/my-repo/pipelines/42/steps/"}
       }
     }
   ]
@@ -431,7 +432,8 @@ const cannedPipelineListInProgressJSON = `{
         "name": "IN_PROGRESS"
       },
       "links": {
-        "html": {"href": "https://bitbucket.org/myworkspace/my-repo/pipelines/results/7"}
+        "self": {"href": "https://api.bitbucket.org/2.0/repositories/myworkspace/my-repo/pipelines/7"},
+        "steps": {"href": "https://api.bitbucket.org/2.0/repositories/myworkspace/my-repo/pipelines/7/steps/"}
       }
     }
   ]
@@ -491,6 +493,9 @@ func TestGetLatestPipelineForBranch_InProgress(t *testing.T) {
 	}
 	if run.Result != "IN_PROGRESS" {
 		t.Errorf("Result = %q, want IN_PROGRESS", run.Result)
+	}
+	if run.URL != "https://bitbucket.org/myworkspace/my-repo/pipelines/results/7" {
+		t.Errorf("URL = %q, want pipeline URL", run.URL)
 	}
 }
 

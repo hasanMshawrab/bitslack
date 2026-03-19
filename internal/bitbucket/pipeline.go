@@ -9,6 +9,9 @@ import (
 )
 
 // pipelineListItemWire is the wire type for a single entry in the pipelines list API.
+// Note: the real Bitbucket API does not include an "html" key in the "links" object
+// for pipeline list items — only "self" and "steps" are present. The run URL is
+// constructed from workspace, repo, and build_number instead.
 type pipelineListItemWire struct {
 	BuildNumber int `json:"build_number"`
 	State       struct {
@@ -17,11 +20,6 @@ type pipelineListItemWire struct {
 			Name string `json:"name"`
 		} `json:"result"`
 	} `json:"state"`
-	Links struct {
-		HTML struct {
-			Href string `json:"href"`
-		} `json:"html"`
-	} `json:"links"`
 }
 
 // pipelineListWire is the wire type for the Bitbucket pipelines list API response.
@@ -55,10 +53,12 @@ func (c *Client) GetLatestPipelineForBranch(
 		result = item.State.Result.Name
 	}
 
+	runURL := fmt.Sprintf("https://bitbucket.org/%s/%s/pipelines/results/%d", workspace, repo, item.BuildNumber)
+
 	return &event.LatestPipelineRun{
 		RunNumber: item.BuildNumber,
 		Result:    result,
-		URL:       item.Links.HTML.Href,
+		URL:       runURL,
 	}, nil
 }
 
