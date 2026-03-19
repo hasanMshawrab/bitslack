@@ -166,10 +166,11 @@ func toPullRequest(r prResponse) *event.PullRequest {
 	pr.Participants = make([]event.Participant, len(r.Participants))
 	for i, p := range r.Participants {
 		pr.Participants[i] = event.Participant{
-			AccountID: p.User.AccountID,
-			Nickname:  p.User.Nickname,
-			Role:      p.Role,
-			Approved:  p.Approved,
+			AccountID:   p.User.AccountID,
+			Nickname:    p.User.Nickname,
+			DisplayName: p.User.DisplayName,
+			Role:        p.Role,
+			Approved:    p.Approved,
 		}
 	}
 

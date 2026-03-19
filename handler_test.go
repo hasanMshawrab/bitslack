@@ -155,6 +155,13 @@ func newBBMockHandler(h *testHarness) http.Handler {
 			return
 		}
 
+		// GET /repositories/{ws}/{repo}/pipelines/{uuid} — pipeline details (creator)
+		if strings.Contains(path, "/pipelines/") && !strings.HasSuffix(path, "/steps/") {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, bbPipelineResponse())
+			return
+		}
+
 		// GET /repositories/{ws}/{repo} — standalone repository lookup
 		noSubpath := !strings.Contains(path, "/pullrequests") &&
 			!strings.Contains(path, "/commit") &&
@@ -302,6 +309,19 @@ func bbPipelineStepsResponse() string {
 				"duration_in_seconds": 18
 			}
 		]
+	}`
+}
+
+// bbPipelineResponse returns a mock Bitbucket pipeline API response including the creator.
+func bbPipelineResponse() string {
+	return `{
+		"uuid": "{pipe-uuid-001}",
+		"creator": {
+			"account_id": "5b10a2844c20165700ede22h",
+			"display_name": "Jane Author",
+			"uuid": "{bb673a1b}",
+			"nickname": "janeauthor"
+		}
 	}`
 }
 

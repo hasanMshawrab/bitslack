@@ -101,14 +101,14 @@ func ToSlack(raw string, resolve func(accountID string) string) string {
 	// Strikethrough: ~~text~~ → ~text~
 	s = reStrike.ReplaceAllString(s, "~$1~")
 
-	// Mentions: @{account_id} → <@slackID> or @account_id
+	// Mentions: @{account_id} → <@slackID> or Bitbucket profile link
 	s = reMention.ReplaceAllStringFunc(s, func(m string) string {
 		sub := reMention.FindStringSubmatch(m)
 		id := sub[1]
 		if slackID := resolve(id); slackID != "" {
 			return "<@" + slackID + ">"
 		}
-		return "@" + id
+		return "<https://bitbucket.org/" + id + "|@" + id + ">"
 	})
 
 	return s

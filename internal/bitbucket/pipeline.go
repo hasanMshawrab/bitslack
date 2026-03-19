@@ -8,6 +8,36 @@ import (
 	"github.com/hasanMshawrab/bitslack/internal/event"
 )
 
+// pipelineWire is the wire type for a Bitbucket pipeline API response (partial).
+type pipelineWire struct {
+	Creator struct {
+		AccountID   string `json:"account_id"`
+		DisplayName string `json:"display_name"`
+		UUID        string `json:"uuid"`
+		Nickname    string `json:"nickname"`
+	} `json:"creator"`
+}
+
+// GetPipelineCreator fetches the creator of a pipeline run.
+// pipelineUUID is pipeline.uuid from the OTel span (the build UUID, not the run UUID).
+func (c *Client) GetPipelineCreator(ctx context.Context, workspace, repo, pipelineUUID string) (*event.User, error) {
+	path := fmt.Sprintf("/repositories/%s/%s/pipelines/%s",
+		workspace,
+		repo,
+		url.PathEscape(pipelineUUID),
+	)
+	var raw pipelineWire
+	if err := c.get(ctx, path, &raw); err != nil {
+		return nil, err
+	}
+	return &event.User{
+		AccountID:   raw.Creator.AccountID,
+		DisplayName: raw.Creator.DisplayName,
+		UUID:        raw.Creator.UUID,
+		Nickname:    raw.Creator.Nickname,
+	}, nil
+}
+
 // stepResultWire is the wire type for a Bitbucket pipeline step state result.
 type stepResultWire struct {
 	Name string `json:"name"`
