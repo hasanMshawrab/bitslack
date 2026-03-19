@@ -163,9 +163,11 @@ func TestToSlack_Mention_Resolved(t *testing.T) {
 }
 
 func TestToSlack_Mention_Unresolved(t *testing.T) {
+	// Unresolved mentions become Bitbucket profile links with account ID as label.
+	want := "<https://bitbucket.org/557058:abc123|@557058:abc123>"
 	got := markdown.ToSlack("@{557058:abc123}", noopResolve)
-	if got != "@557058:abc123" {
-		t.Fatalf("want %q, got %q", "@557058:abc123", got)
+	if got != want {
+		t.Fatalf("want %q, got %q", want, got)
 	}
 }
 

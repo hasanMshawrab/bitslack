@@ -674,7 +674,7 @@ func TestReply_UnmappedActor(t *testing.T) {
 	ev := &event.Event{
 		Key: event.KeyPRApproved,
 		PullRequest: &event.PullRequestEvent{
-			Actor: event.User{Nickname: "unknownuser", AccountID: "acct-unknown"},
+			Actor: event.User{Nickname: "unknownuser", DisplayName: "Unknown User", AccountID: "acct-unknown"},
 		},
 	}
 	resolve := mapResolver(map[string]string{}) // empty
@@ -682,6 +682,91 @@ func TestReply_UnmappedActor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertContains(t, text, "@unknownuser")
+	// Unmapped actors get a Bitbucket profile link.
+	assertContains(t, text, "<https://bitbucket.org/acct-unknown|Unknown User>")
 	assertNotContains(t, text, "<@")
+	assertNotContains(t, text, "@unknownuser")
+}
+
+func TestReply_PipelineTriggeredBy_MappedCreator(t *testing.T) {
+	creator := event.User{AccountID: "acct-bob", DisplayName: "Bob Reviewer", Nickname: "bobreviewer"}
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				Result:  "COMPLETE",
+				RefName: "main",
+				URL:     "https://example.com",
+			},
+			Creator: &creator,
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "Triggered by <@U002BOB>")
+}
+
+func TestReply_PipelineTriggeredBy_UnmappedCreator(t *testing.T) {
+	creator := event.User{AccountID: "acct-charlie", DisplayName: "Charlie Dev", Nickname: "charlie"}
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				Result:  "COMPLETE",
+				RefName: "main",
+				URL:     "https://example.com",
+			},
+			Creator: &creator,
+		},
+	}
+	resolve := mapResolver(map[string]string{}) // no mappings
+	text, err := format.Reply(ev, resolve, format.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "Triggered by <https://bitbucket.org/acct-charlie|Charlie Dev>")
+}
+
+func TestReply_PipelineTriggeredBy_NoCreator(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				Result:  "COMPLETE",
+				RefName: "main",
+				URL:     "https://example.com",
+			},
+			// Creator is nil
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNotContains(t, text, "Triggered by")
+}
+
+func TestReply_PipelineStandaloneLinkedRepoName(t *testing.T) {
+	ev := &event.Event{
+		Key: event.KeyPipelineSpanCreated,
+		Pipeline: &event.PipelineRunEvent{
+			PipelineRun: event.PipelineRun{
+				RunNumber: 9,
+				Result:    "COMPLETE",
+				RefName:   "main",
+				URL:       "https://bitbucket.org/myworkspace/my-repo/pipelines/results/{aa}",
+				Repository: event.Repository{
+					Name:    "my-repo",
+					HTMLURL: "https://bitbucket.org/myworkspace/my-repo",
+				},
+			},
+		},
+	}
+	text, err := format.Reply(ev, defaultResolver(), format.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, text, "[<https://bitbucket.org/myworkspace/my-repo|my-repo>]")
 }

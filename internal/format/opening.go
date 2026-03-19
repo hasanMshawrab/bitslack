@@ -49,14 +49,24 @@ func alsoApprovedParticipants(participants []event.Participant) []event.Particip
 // Returns a plain-text fallback string and structured blocks.
 func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slack.Block) {
 	repoName := pr.Source.Repository.Name
+	repoURL := pr.Source.Repository.HTMLURL
 	if repoName == "" {
 		repoName = pr.Destination.Repository.Name
+		repoURL = pr.Destination.Repository.HTMLURL
+	}
+
+	// Link the repo name when a URL is available.
+	var repoLabel string
+	if repoURL != "" {
+		repoLabel = fmt.Sprintf("<%s|%s>", repoURL, repoName)
+	} else {
+		repoLabel = repoName
 	}
 
 	// Header: 🔀 *[{repo}] Pull Request <{url}|#{id}>* • {source} → {dest}
 	prLink := fmt.Sprintf("<%s|#%d>", pr.HTMLURL, pr.ID)
 	header := fmt.Sprintf("🔀 *[%s] Pull Request %s* • %s → %s",
-		repoName, prLink,
+		repoLabel, prLink,
 		pr.Source.Branch.Name, pr.Destination.Branch.Name)
 
 	headerBlock := slack.Block{
@@ -70,14 +80,17 @@ func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slac
 	var fields []string
 	fields = append(fields, fmt.Sprintf("*Title:* %s", pr.Title))
 	fields = append(fields, fmt.Sprintf("*Status:* %s", prStateLabel(pr.State)))
-	fields = append(fields, fmt.Sprintf("*Author:* %s", mention(pr.Author.AccountID, pr.Author.Nickname, resolve)))
+	fields = append(
+		fields,
+		fmt.Sprintf("*Author:* %s", mention(pr.Author.AccountID, displayNameOf(pr.Author), resolve)),
+	)
 
 	// Reviewers with approval checkmarks
 	if len(pr.Reviewers) > 0 {
 		approved := approvedReviewerIDs(pr.Participants)
 		reviewerParts := make([]string, len(pr.Reviewers))
 		for i, r := range pr.Reviewers {
-			m := mention(r.AccountID, r.Nickname, resolve)
+			m := mention(r.AccountID, displayNameOf(r), resolve)
 			if approved[r.AccountID] {
 				reviewerParts[i] = "✅ " + m
 			} else {
@@ -92,7 +105,7 @@ func OpeningMessage(pr *event.PullRequest, resolve UserResolver) (string, []slac
 	if len(alsoApproved) > 0 {
 		parts := make([]string, len(alsoApproved))
 		for i, p := range alsoApproved {
-			parts[i] = mention(p.AccountID, p.Nickname, resolve)
+			parts[i] = mention(p.AccountID, p.DisplayName, resolve)
 		}
 		fields = append(fields, fmt.Sprintf("*Also approved:* %s", strings.Join(parts, " • ")))
 	}
@@ -132,10 +145,27 @@ func prStateLabel(state string) string {
 	}
 }
 
-// mention returns "<@slackID>" if mapped, or "@nickname" as fallback.
-func mention(accountID, nickname string, resolve UserResolver) string {
+// mention returns "<@slackID>" if mapped, or a Bitbucket profile link as fallback.
+// When accountID is empty the displayName is returned as plain text.
+func mention(accountID, displayName string, resolve UserResolver) string {
 	if id := resolve(accountID); id != "" {
 		return fmt.Sprintf("<@%s>", id)
 	}
-	return "@" + nickname
+	if accountID != "" {
+		label := displayName
+		if label == "" {
+			label = accountID
+		}
+		return fmt.Sprintf("<https://bitbucket.org/%s|%s>", accountID, label)
+	}
+	return displayName
+}
+
+// displayNameOf returns the best available display name for a user.
+// Prefers DisplayName; falls back to Nickname.
+func displayNameOf(u event.User) string {
+	if u.DisplayName != "" {
+		return u.DisplayName
+	}
+	return u.Nickname
 }

@@ -220,10 +220,11 @@ func parsePullRequestEvent(eventKey string, payload []byte) (*Event, error) {
 	participants := make([]Participant, len(w.PullRequest.Participants))
 	for i, p := range w.PullRequest.Participants {
 		participants[i] = Participant{
-			AccountID: p.User.AccountID,
-			Nickname:  p.User.Nickname,
-			Role:      p.Role,
-			Approved:  p.Approved,
+			AccountID:   p.User.AccountID,
+			Nickname:    p.User.Nickname,
+			DisplayName: p.User.DisplayName,
+			Role:        p.Role,
+			Approved:    p.Approved,
 		}
 	}
 

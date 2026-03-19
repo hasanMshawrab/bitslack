@@ -83,10 +83,11 @@ type Approval struct {
 
 // Participant represents a PR participant (reviewer, author, or observer).
 type Participant struct {
-	AccountID string
-	Nickname  string
-	Role      string // "REVIEWER", "AUTHOR", "PARTICIPANT"
-	Approved  bool
+	AccountID   string
+	Nickname    string
+	DisplayName string
+	Role        string // "REVIEWER", "AUTHOR", "PARTICIPANT"
+	Approved    bool
 }
 
 // PullRequest is the canonical PR type used across the library.
@@ -167,9 +168,11 @@ type PipelineStep struct {
 
 // PipelineRunEvent is the parsed form of a pipeline:span_created bbc.pipeline_run span.
 // Steps is populated by the handler after fetching from the Bitbucket API.
+// Creator is populated by the handler after fetching pipeline details from the Bitbucket API.
 type PipelineRunEvent struct {
 	PipelineRun PipelineRun
 	Steps       []PipelineStep
+	Creator     *User // nil if unavailable
 }
 
 // Event is a discriminated union of all event families.

@@ -54,7 +54,7 @@ func TestOpeningMessage_WithUnmappedUsers(t *testing.T) {
 	pr := &event.PullRequest{
 		ID:     2,
 		Title:  "Fix bug Y",
-		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
+		Author: event.User{Nickname: "janeauthor", DisplayName: "Jane Author", AccountID: "acct-jane"},
 		Source: event.Endpoint{
 			Branch:     event.Branch{Name: "fix/bug-y"},
 			Repository: event.Repository{Name: "my-repo"},
@@ -63,7 +63,7 @@ func TestOpeningMessage_WithUnmappedUsers(t *testing.T) {
 			Branch:     event.Branch{Name: "main"},
 			Repository: event.Repository{Name: "my-repo"},
 		},
-		Reviewers: []event.User{{Nickname: "bobreviewer", AccountID: "acct-bob"}},
+		Reviewers: []event.User{{Nickname: "bobreviewer", DisplayName: "Bob Reviewer", AccountID: "acct-bob"}},
 		HTMLURL:   "https://bitbucket.org/myworkspace/my-repo/pull-requests/2",
 	}
 	resolve := mapResolver(map[string]string{}) // empty — no mappings
@@ -71,9 +71,13 @@ func TestOpeningMessage_WithUnmappedUsers(t *testing.T) {
 	_, blocks := format.OpeningMessage(pr, resolve)
 	rendered := blocksToText(blocks)
 
-	assertContains(t, rendered, "@janeauthor")
-	assertContains(t, rendered, "@bobreviewer")
+	// Unmapped users get Bitbucket profile links instead of @nickname.
+	assertContains(t, rendered, "<https://bitbucket.org/acct-jane|Jane Author>")
+	assertContains(t, rendered, "<https://bitbucket.org/acct-bob|Bob Reviewer>")
 	assertNotContains(t, rendered, "<@")
+	// Plain @mention fallback is gone.
+	assertNotContains(t, rendered, "@janeauthor")
+	assertNotContains(t, rendered, "@bobreviewer")
 }
 
 func TestOpeningMessage_MultipleReviewers(t *testing.T) {
@@ -147,7 +151,7 @@ func TestOpeningMessage_PartialMapping(t *testing.T) {
 		},
 		Reviewers: []event.User{
 			{Nickname: "bobreviewer", AccountID: "acct-bob"},
-			{Nickname: "unknownuser", AccountID: "acct-unknown"},
+			{Nickname: "unknownuser", DisplayName: "Unknown User", AccountID: "acct-unknown"},
 		},
 		HTMLURL: "https://bitbucket.org/myworkspace/my-repo/pull-requests/5",
 	}
@@ -160,7 +164,9 @@ func TestOpeningMessage_PartialMapping(t *testing.T) {
 	rendered := blocksToText(blocks)
 
 	assertContains(t, rendered, "<@U002BOB>")
-	assertContains(t, rendered, "@unknownuser")
+	// Unmapped user gets a Bitbucket profile link.
+	assertContains(t, rendered, "<https://bitbucket.org/acct-unknown|Unknown User>")
+	assertNotContains(t, rendered, "@unknownuser")
 }
 
 func TestOpeningMessage_ApprovedReviewerCheckmark(t *testing.T) {
@@ -368,9 +374,42 @@ func TestOpeningMessage_HeaderFormat(t *testing.T) {
 	}
 	header := blocks[0].Text.Text
 	assertContains(t, header, "🔀")
+	// No HTMLURL on the repository, so repo name is plain text.
 	assertContains(t, header, "*[payments-api] Pull Request")
 	assertContains(t, header, "<https://bitbucket.org/myworkspace/payments-api/pull-requests/42|#42>")
 	assertContains(t, header, "feature/auth → main")
+}
+
+func TestOpeningMessage_LinkedRepoName(t *testing.T) {
+	pr := &event.PullRequest{
+		ID:     43,
+		Title:  "Linked repo PR",
+		Author: event.User{Nickname: "janeauthor", AccountID: "acct-jane"},
+		Source: event.Endpoint{
+			Branch: event.Branch{Name: "feature/x"},
+			Repository: event.Repository{
+				Name:    "payments-api",
+				HTMLURL: "https://bitbucket.org/myworkspace/payments-api",
+			},
+		},
+		Destination: event.Endpoint{
+			Branch: event.Branch{Name: "main"},
+			Repository: event.Repository{
+				Name:    "payments-api",
+				HTMLURL: "https://bitbucket.org/myworkspace/payments-api",
+			},
+		},
+		HTMLURL: "https://bitbucket.org/myworkspace/payments-api/pull-requests/43",
+	}
+	resolve := mapResolver(map[string]string{})
+
+	_, blocks := format.OpeningMessage(pr, resolve)
+	if len(blocks) == 0 || blocks[0].Text == nil {
+		t.Fatal("expected at least one block with text")
+	}
+	header := blocks[0].Text.Text
+	// Repo name in header is a Slack mrkdwn link.
+	assertContains(t, header, "[<https://bitbucket.org/myworkspace/payments-api|payments-api>]")
 }
 
 // helpers

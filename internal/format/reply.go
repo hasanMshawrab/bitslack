@@ -83,26 +83,26 @@ func Reply(ev *event.Event, resolve UserResolver, opts Options) (string, error) 
 	case event.KeyCommitStatusCreated, event.KeyCommitStatusUpdated:
 		return formatCommitStatus(ev.CommitStatus), nil
 	case event.KeyPipelineSpanCreated:
-		return formatPipelineRun(ev.Pipeline, opts.PipelineLinkedToPR), nil
+		return formatPipelineRun(ev.Pipeline, resolve, opts.PipelineLinkedToPR), nil
 	default:
 		return "", fmt.Errorf("format: unknown event key %q", ev.Key)
 	}
 }
 
 func formatApproved(ev *event.PullRequestEvent, resolve UserResolver) string {
-	return fmt.Sprintf("✅ %s approved this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
+	return fmt.Sprintf("✅ %s approved this pull request", mention(ev.Actor.AccountID, displayNameOf(ev.Actor), resolve))
 }
 
 func formatUnapproved(ev *event.PullRequestEvent, resolve UserResolver) string {
-	return fmt.Sprintf("↩️ %s removed their approval", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
+	return fmt.Sprintf("↩️ %s removed their approval", mention(ev.Actor.AccountID, displayNameOf(ev.Actor), resolve))
 }
 
 func formatFulfilled(ev *event.PullRequestEvent, resolve UserResolver) string {
-	return fmt.Sprintf("🎉 %s merged this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
+	return fmt.Sprintf("🎉 %s merged this pull request", mention(ev.Actor.AccountID, displayNameOf(ev.Actor), resolve))
 }
 
 func formatRejected(ev *event.PullRequestEvent, resolve UserResolver) string {
-	msg := fmt.Sprintf("🚫 %s declined this pull request", mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve))
+	msg := fmt.Sprintf("🚫 %s declined this pull request", mention(ev.Actor.AccountID, displayNameOf(ev.Actor), resolve))
 	if ev.PullRequest.Reason != "" {
 		msg += fmt.Sprintf("\n> %s", ev.PullRequest.Reason)
 	}
@@ -110,7 +110,7 @@ func formatRejected(ev *event.PullRequestEvent, resolve UserResolver) string {
 }
 
 func formatCommentCreated(ev *event.PullRequestEvent, resolve UserResolver, opts Options) string {
-	actor := mention(ev.Actor.AccountID, ev.Actor.Nickname, resolve)
+	actor := mention(ev.Actor.AccountID, displayNameOf(ev.Actor), resolve)
 	comment := ev.Comment
 	if comment == nil {
 		return fmt.Sprintf("💬 %s commented", actor)
@@ -182,7 +182,7 @@ func commitStatusEmoji(state string) string {
 	}
 }
 
-func formatPipelineRun(ev *event.PipelineRunEvent, linked bool) string {
+func formatPipelineRun(ev *event.PipelineRunEvent, resolve UserResolver, linked bool) string {
 	run := ev.PipelineRun
 
 	overallEmoji := pipelineResultEmoji(run.Result)
@@ -198,16 +198,17 @@ func formatPipelineRun(ev *event.PipelineRunEvent, linked bool) string {
 		header = fmt.Sprintf("⚙️ *Pipeline <%s|#%d>* • %s — %s",
 			run.URL, run.RunNumber, pipelineTriggerLabel(run.Trigger), resultPart)
 	} else {
+		// Standalone message: include repo name (linked if URL available) and branch.
+		repoLabel := run.Repository.Name
+		if run.Repository.HTMLURL != "" {
+			repoLabel = fmt.Sprintf("<%s|%s>", run.Repository.HTMLURL, run.Repository.Name)
+		}
 		header = fmt.Sprintf("⚙️ *[%s] Pipeline <%s|#%d>* • %s • %s — %s",
-			run.Repository.Name, run.URL, run.RunNumber, run.RefName,
+			repoLabel, run.URL, run.RunNumber, run.RefName,
 			pipelineTriggerLabel(run.Trigger), resultPart)
 	}
 	if d := formatDuration(run.DurationSecs); d != "" {
 		header += " • " + d
-	}
-
-	if len(ev.Steps) == 0 {
-		return header
 	}
 
 	var sb strings.Builder
@@ -224,6 +225,12 @@ func formatPipelineRun(ev *event.PipelineRunEvent, linked bool) string {
 			sb.WriteString(fmt.Sprintf("\n    %s %s%s", emoji, step.Name, stepDuration))
 		}
 	}
+
+	// Triggered by: append creator attribution if available.
+	if ev.Creator != nil {
+		sb.WriteString("\nTriggered by " + mention(ev.Creator.AccountID, displayNameOf(*ev.Creator), resolve))
+	}
+
 	return sb.String()
 }
 

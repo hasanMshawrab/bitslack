@@ -304,6 +304,15 @@ func (c *Client) processPipelineRun(ev *event.Event) {
 		ev.Pipeline.Steps = steps
 	}
 
+	// Fetch pipeline creator for "Triggered by" attribution.
+	creator, creatorErr := c.bbClient.GetPipelineCreator(ctx, workspace, repoSlug, run.PipelineUUID)
+	if creatorErr != nil {
+		c.logger.Warn(fmt.Sprintf("bitslack: get pipeline creator for %s pipeline %s: %v",
+			repoFullName, run.PipelineUUID, creatorErr))
+	} else {
+		ev.Pipeline.Creator = creator
+	}
+
 	// Apply manual-stop suppression before posting.
 	if c.skipManuallyStoppedPipelines && run.Trigger == "MANUAL" && allStepsStopped(steps) {
 		c.logger.Info(fmt.Sprintf("bitslack: suppressing manually stopped pipeline %s", run.UUID))
