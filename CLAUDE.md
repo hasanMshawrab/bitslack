@@ -93,7 +93,7 @@ bitslack/
 
 The library is backend-agnostic. Consumers construct the core engine by injecting adapters that satisfy these interfaces:
 
-- **ConfigStore** — provides repo→channel mapping and Bitbucket account ID→Slack user ID lookup. The library only calls lookup methods (`GetChannel`, `GetSlackUserID`); it never loads or caches data itself. The consumer controls their own data lifecycle — preloading, caching, or fetching on demand is entirely up to them. `GetSlackUserID` accepts a Bitbucket `account_id` (not `nickname`) because `account_id` is stable across webhook payloads and REST API responses, whereas `nickname` is user-editable and inconsistent between the two sources.
+- **ConfigStore** — provides repo→channel mapping and Bitbucket account ID→Slack user ID lookup. The library only calls lookup methods (`GetChannel`, `GetSlackUserID`); it never loads or caches data itself. The consumer controls their own data lifecycle — preloading, caching, or fetching on demand is entirely up to them. `GetSlackUserID` accepts a Bitbucket `account_id` (not `nickname`) because `account_id` is stable across webhook payloads and REST API responses, whereas `nickname` is user-editable and inconsistent between the two sources. When `GetSlackUserID` returns no mapping, users are rendered as a Bitbucket profile link (`<https://bitbucket.org/{accountID}|Display Name>`) rather than plain text — this applies to PR author, reviewers, also-approved participants, event actors, and `@{account_id}` mentions in comment markdown.
 - **ThreadStore** — stores and retrieves the PR→Slack thread `ts` mapping. Needs TTL support (30-day expiry per PR). Could be backed by Redis, Memcached, an in-process map, etc.
 - **Logger** — structured logging with three methods: `Info(message string)`, `Warn(message string)`, `Error(message string)`. If none is provided, the library defaults to a no-op logger.
 
@@ -105,8 +105,9 @@ The first message posted for a PR (either on `pullrequest:created` or backfilled
 
 **Header section** (one line):
 ```
-🔀 *[{repo}] Pull Request <{url}|#{id}>* • {source branch} → {destination branch}
+🔀 *<{repoURL}|[{repo}]> Pull Request <{url}|#{id}>* • {source branch} → {destination branch}
 ```
+The `[{repo}]` prefix is hyperlinked to the Bitbucket repository page when the URL is available.
 
 **Fields section:**
 ```
@@ -154,7 +155,7 @@ Comment reply formatting is controlled by `Config.FormatOptions` (`FormatOptions
 - `~~strike~~` → `~strike~`
 - `[text](url)` → `<url|text>`
 - `![alt](url)` → `<url|📎 alt>`
-- `@{account_id}` → `<@slackID>` (resolved) or `@account_id` (unresolved)
+- `@{account_id}` → `<@slackID>` (resolved) or `<https://bitbucket.org/{accountID}|Display Name>` (unresolved — links to their Bitbucket profile)
 - Headings → `*text*`
 - Unordered list items → `• item`
 - Dividers (`---`) → stripped
@@ -216,11 +217,16 @@ The `account.uuid` is used as the workspace identifier (Bitbucket accepts UUIDs 
 - **Thread reply** (linked to a PR — repo and branch are visible in the opening message above):
 ```
 ⚙️ *Pipeline <{url}|#{run}>* • {trigger label} — {emoji} {result text} • {duration}
+Triggered by <mention>
 ```
 - **Standalone** (no linked PR, or tag target):
 ```
-⚙️ *[{repo}] Pipeline <{url}|#{run}>* • {branch} • {trigger label} — {emoji} {result text} • {duration}
+⚙️ *<{repoURL}|[{repo}]> Pipeline <{url}|#{run}>* • {branch} • {trigger label} — {emoji} {result text} • {duration}
+Triggered by <mention>
 ```
+The `[{repo}]` prefix in the standalone format is hyperlinked to the Bitbucket repository page when the URL is available.
+
+Both formats are followed by a `Triggered by <mention>` line. The mention uses `<@slackID>` if the creator is mapped, or `<https://bitbucket.org/{accountID}|Display Name>` otherwise. This requires one extra Bitbucket API call per pipeline run (`GET /repositories/{workspace}/{repo}/pipelines/{pipeline.uuid}`) to retrieve the `creator` field. If that call fails, the `Triggered by` line is omitted (soft Warn log) and the message posts without attribution.
 
 Both formats are followed by indented per-step lines when step data is available:
 ```

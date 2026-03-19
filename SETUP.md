@@ -30,7 +30,7 @@ To map a Bitbucket user to a Slack @mention, you need their Slack member ID:
 
 The ID looks like `U08XXXXXXXXX`.
 
-> **Tip:** You need one ID per team member you want to appear as a real @mention. Users without a mapping will appear as plain text (e.g. `@alice`) instead of a clickable mention.
+> **Tip:** You need one ID per team member you want to appear as a real @mention. Users without a mapping will appear as a Bitbucket profile link (e.g. `Alice Smith` linking to their Bitbucket profile) instead of a Slack @mention.
 
 ---
 
